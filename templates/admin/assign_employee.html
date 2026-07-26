@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Assign Employees - Supraja{% endblock %}
+
+{% block nav_title %}Staff Assignment{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'shop_locations' %}" class="nav-link">Back to Locations</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="title-section" style="margin-bottom: 0;">
+        <h2>🏪 {{ shop_location.name }}</h2>
+        <p class="small-note">
+            {% if shop_location.address %}
+                📍 {{ shop_location.address }}
+            {% else %}
+                <em>No address provided</em>
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+{% if error %}
+    <div class="card" style="background-color: #fee2e2; border: 1px solid #ef4444; padding: 1rem; margin-bottom: 1.5rem; color: #b91c1c;">
+        {{ error }}
+    </div>
+{% endif %}
+
+<div class="grid">
+    <!-- Add Employee Section -->
+    <div class="card">
+        <div class="title-section">
+            <h3>Add Employee</h3>
+            <p class="small-note">Select an employee to assign to this shop.</p>
+        </div>
+        
+        {% if available_employees %}
+            <form method="POST">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="employee_id">Select Employee</label>
+                    <select id="employee_id" name="employee_id" class="form-control" required>
+                        <option value="">-- Choose an employee --</option>
+                        {% for employee in available_employees %}
+                            <option value="{{ employee.id }}">{{ employee.username }} ({{ employee.email }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Assign to Shop</button>
+            </form>
+        {% else %}
+            <div class="text-center" style="padding: 1.5rem; background-color: #f0fdf4; border-radius: 0.5rem; color: #166534;">
+                <p>✓ All available employees are already assigned to this shop.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Assigned Employees Section -->
+    <div class="card">
+        <div class="title-section">
+            <h3>Assigned Staff ({{ assigned_employees.count }})</h3>
+            <p class="small-note">Current employees working at this location.</p>
+        </div>
+
+        {% if assigned_employees %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th style="text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for assignment in assigned_employees %}
+                            <tr>
+                                <td style="font-weight: 600;">{{ assignment.employee.username }}</td>
+                                <td class="small-note">{{ assignment.employee.email }}</td>
+                                <td style="text-align: right;">
+                                    <a href="{% url 'remove_employee_from_shop' assignment.id %}" 
+                                       class="btn btn-danger" 
+                                       style="padding: 0.3rem 0.6rem; font-size: 0.75rem;"
+                                       onclick="return confirm('Remove this employee from this location?')">Remove</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center" style="padding: 2rem; color: var(--text-light);">
+                <p>📭 No employees assigned to this location yet.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

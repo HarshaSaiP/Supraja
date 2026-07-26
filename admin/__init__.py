@@ -1,0 +1,1 @@
+from .delete_stock_view import delete_stock_view

@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block title %}Check Sales - Supraja{% endblock %}
+
+{% block extra_style %}
+    .filters-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        align-items: end;
+    }
+    #filters-container {
+        display: none;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+    }
+    #loading_spinner {
+        text-align: center;
+        padding: 2rem;
+        display: none;
+        color: var(--primary);
+        font-weight: 600;
+    }
+    #results_container {
+        display: none;
+    }
+{% endblock %}
+
+{% block extra_css %}
+    <!-- Flatpickr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css">
+{% endblock %}
+
+{% block nav_title %}Sales Reporting{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'admin_dashboard' %}" class="nav-link">Back to Dashboard</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="form-group" style="max-width: 400px;">
+        <label>Shop Location *</label>
+        <select id="shop_location_select" class="form-control">
+            <option value="">-- Select Shop --</option>
+            {% for shop in shop_locations %}
+                <option value="{{ shop.id }}">{{ shop.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div id="filters-container">
+        <div class="filters-grid">
+            <div class="form-group">
+                <label>Filter by Date</label>
+                <input type="text" id="date_filter" class="form-control" placeholder="Select Date">
+            </div>
+
+            <div class="form-group">
+                <label>Filter by Month & Year</label>
+                <input type="text" id="month_filter" class="form-control" placeholder="Select Month & Year">
+            </div>
+
+            <div class="form-group">
+                <label>Filter by Employee</label>
+                <select id="employee_filter" class="form-control">
+                    <option value="">-- All Employees --</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Filter by Item</label>
+                <select id="item_filter" class="form-control">
+                    <option value="">-- All Items --</option>
+                </select>
+            </div>
+            
+            <div class="form-group" style="display: flex; gap: 0.5rem;">
+                <button id="apply_filters_btn" class="btn btn-primary">Apply</button>
+                <button id="clear_filters_btn" class="btn btn-secondary">Clear</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loading_spinner">
+    <div class="spinner"></div> Fetching sales records...
+</div>
+
+<div id="results_container">
+    <div class="card">
+        <h3 class="mb-4">Sales Records</h3>
+        <div class="table-container">
+            <table id="sales_table">
+                <thead>
+                    <tr>
+                        <th>Date & Time</th>
+                        <th>Item Name</th>
+                        <th>Employee</th>
+                        <th>Quantity</th>
+                        <th>Discount (%)</th>
+                        <th>GST (%)</th>
+                        <th>GST (Rs.)</th>
+                        <th>Total Amount (Rs.)</th>
+                    </tr>
+                </thead>
+                <tbody id="sales_tbody">
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="7" style="text-align: right;">Total GST Amount:</td>
+                        <td id="total_gst_display" style="color: var(--primary);">Rs. 0.00</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td colspan="7" style="text-align: right;">Total Sales Amount (Incl. GST):</td>
+                        <td id="total_amount_display">Rs. 0.00</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="no_records_msg" class="text-center" style="padding: 3rem; color: var(--text-light);">
+    <p>Please select a shop location to view sales records.</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+    <script>
+        // Initialize Flatpickr
+        const datePicker = flatpickr("#date_filter", {
+            dateFormat: "Y-m-d",
+        });
+
+        const monthPicker = flatpickr("#month_filter", {
+            plugins: [
+                new monthSelectPlugin({
+                    shorthand: false,
+                    dateFormat: "Y-m",
+                    altFormat: "F Y",
+                })
+            ]
+        });
+
+        const shopSelect = document.getElementById('shop_location_select');
+        const filtersContainer = document.getElementById('filters-container');
+        const resultsContainer = document.getElementById('results_container');
+        const noRecordsMsg = document.getElementById('no_records_msg');
+        const loadingSpinner = document.getElementById('loading_spinner');
+        
+        const dateFilter = document.getElementById('date_filter');
+        const monthFilter = document.getElementById('month_filter');
+        const employeeFilter = document.getElementById('employee_filter');
+        const itemFilter = document.getElementById('item_filter');
+        
+        const salesTbody = document.getElementById('sales_tbody');
+        const totalAmountDisplay = document.getElementById('total_amount_display');
+        const totalGstDisplay = document.getElementById('total_gst_display');
+        
+        const applyBtn = document.getElementById('apply_filters_btn');
+        const clearBtn = document.getElementById('clear_filters_btn');
+
+        // Helper: get the actual Y-m value from monthPicker using selectedDates (not input.value which shows display text)
+        function getMonthValue() {
+            if (monthPicker.selectedDates && monthPicker.selectedDates.length > 0) {
+                const d = monthPicker.selectedDates[0];
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                return `${y}-${m}`;
+            }
+            return '';
+        }
+
+        // Helper: get the actual Y-m-d value from datePicker
+        function getDateValue() {
+            if (datePicker.selectedDates && datePicker.selectedDates.length > 0) {
+                const d = datePicker.selectedDates[0];
+                const y = d.getFullYear();
+                const mo = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${y}-${mo}-${day}`;
+            }
+            return '';
+        }
+
+        async function fetchData(updateOptions = false) {
+            const shopId = shopSelect.value;
+            if (!shopId) return;
+
+            loadingSpinner.style.display = 'block';
+            resultsContainer.style.display = 'none';
+            noRecordsMsg.style.display = 'none';
+
+            const params = new URLSearchParams({
+                shop_location: shopId,
+                date: getDateValue(),
+                month: getMonthValue(),
+                employee: employeeFilter.value,
+                item_name: itemFilter.value
+            });
+
+            try {
+                const response = await fetch(`/admin-get-sales-data/?${params.toString()}`);
+                const data = await response.json();
+
+                if (updateOptions) {
+                    populateDropdown(employeeFilter, data.dropdown_options.employees, '-- All Employees --', true);
+                    populateDropdown(itemFilter, data.dropdown_options.items, '-- All Items --');
+                }
+
+                renderTable(data.sales, data.total_amount, data.total_gst);
+                
+                filtersContainer.style.display = 'block';
+                resultsContainer.style.display = 'block';
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                alert('Failed to fetch data.');
+            } finally {
+                loadingSpinner.style.display = 'none';
+            }
+        }
+
+        function populateDropdown(dropdown, items, defaultText, isEmployee = false) {
+            const currentValue = dropdown.value;
+            dropdown.innerHTML = `<option value="">${defaultText}</option>`;
+            items.forEach(item => {
+                const option = document.createElement('option');
+                if (isEmployee) {
+                    option.value = item.id;
+                    option.textContent = item.name;
+                } else {
+                    option.value = item;
+                    option.textContent = item;
+                }
+                dropdown.appendChild(option);
+            });
+            dropdown.value = currentValue;
+        }
+
+        function renderTable(sales, total, totalGst) {
+            salesTbody.innerHTML = '';
+            if (sales.length === 0) {
+                salesTbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-light);">No sales found for the selected filters.</td></tr>';
+            } else {
+                sales.forEach(sale => {
+                    const row = `
+                        <tr>
+                            <td>${sale.date}</td>
+                            <td>${sale.item_name}</td>
+                            <td>${sale.employee}</td>
+                            <td>${sale.quantity}</td>
+                            <td>${Number(sale.discount).toFixed(2)}%</td>
+                            <td>${Number(sale.gst_percent).toFixed(0)}%</td>
+                            <td>Rs. ${Number(sale.gst_amount).toFixed(2)}</td>
+                            <td>Rs. ${Number(sale.total).toFixed(2)}</td>
+                        </tr>
+                    `;
+                    salesTbody.innerHTML += row;
+                });
+            }
+            totalAmountDisplay.textContent = `Rs. ${Number(total).toFixed(2)}`;
+            totalGstDisplay.textContent = `Rs. ${Number(totalGst).toFixed(2)}`;
+        }
+
+        shopSelect.addEventListener('change', () => {
+            if (shopSelect.value) {
+                datePicker.clear();
+                monthPicker.clear();
+                employeeFilter.value = '';
+                itemFilter.value = '';
+                fetchData(true);
+            } else {
+                filtersContainer.style.display = 'none';
+                resultsContainer.style.display = 'none';
+                noRecordsMsg.style.display = 'block';
+            }
+        });
+
+        applyBtn.addEventListener('click', () => fetchData(false));
+        
+        clearBtn.addEventListener('click', () => {
+            datePicker.clear();
+            monthPicker.clear();
+            employeeFilter.value = '';
+            itemFilter.value = '';
+            fetchData(false);
+        });
+    </script>
+{% endblock %}

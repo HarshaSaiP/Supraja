@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}Employee Dashboard - Supraja{% endblock %}
+
+{% block extra_style %}
+    .line-item-row {
+        display: grid;
+        grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto;
+        gap: 1rem;
+        align-items: end;
+        padding: 1.5rem;
+        background-color: #f8fafc;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid var(--border);
+    }
+    @media (max-width: 1024px) {
+        .line-item-row {
+            grid-template-columns: 1fr 1fr;
+        }
+        .line-item-row > div:first-child {
+            grid-column: span 2;
+        }
+    }
+    @media (max-width: 640px) {
+        .line-item-row {
+            grid-template-columns: 1fr;
+            padding: 1rem;
+        }
+        .line-item-row > div:first-child {
+            grid-column: span 1;
+        }
+        .line-item-row .btn-remove-line {
+            margin-bottom: 0 !important;
+            width: 100%;
+        }
+    }
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        padding: 1rem;
+    }
+    .modal-overlay.show {
+        display: flex;
+    }
+    .modal-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        max-width: 900px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: var(--shadow-lg);
+    }
+    .preview-total {
+        font-size: 1.25rem;
+        font-weight: 700;
+        text-align: right;
+        margin-top: 1.5rem;
+        color: var(--primary);
+    }
+{% endblock %}
+
+{% block nav_title %}Employee Portal{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'logout' %}" class="nav-link" style="background-color: var(--danger);">Logout</a>
+{% endblock %}
+
+{% block content %}
+<div class="grid">
+    <!-- Sale Section -->
+    <div style="grid-column: span 2;">
+        <div class="card">
+            <div class="title-section">
+                <h2>New Sale</h2>
+                <p>Create a new transaction for your assigned location.</p>
+            </div>
+
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="preview_sale">
+                
+                <div class="form-group" style="max-width: 400px;">
+                    <label>Assigned Location</label>
+                    <input type="text" class="form-control" value="{% if primary_assigned_shop %}{{ primary_assigned_shop.name }}{% else %}Not assigned{% endif %}" readonly>
+                </div>
+
+                <div id="line-items-container"></div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <button type="button" class="btn btn-primary" id="add-line-btn">+ Add Item</button>
+                    <button type="submit" class="btn btn-primary" style="background-color: var(--success);">Generate Bill</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Stock Preview -->
+    <div>
+        <div class="card">
+            <h3>📦 Available Stock</h3>
+            <p class="small-note mb-4">Current inventory in this shop</p>
+            <div id="available-stock-container" class="table-container">
+                <p class="text-center py-4">Loading stock...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if pending_sale_lines %}
+<div class="modal-overlay show" id="confirm-modal">
+    <div class="modal-card">
+        <h3 class="mb-4">Sale Confirmation</h3>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Item Name</th>
+                        <th>Unit Price</th>
+                        <th>Qty</th>
+                        <th>Disc (%)</th>
+                        <th>GST (%)</th>
+                        <th>GST (Rs.)</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in pending_sale_lines %}
+                        <tr>
+                            <td>{{ line.item_name }}</td>
+                            <td>{{ line.unit_price|floatformat:2 }}</td>
+                            <td>{{ line.quantity }}</td>
+                            <td>{{ line.discount_percent|floatformat:2 }}%</td>
+                            <td>{{ line.gst_percent|floatformat:2 }}%</td>
+                            <td>{{ line.gst_amount|floatformat:2 }}</td>
+                            <td style="font-weight: 600;">{{ line.line_total|floatformat:2 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="preview-total">Final Amount: Rs. {{ pending_sale_total|floatformat:2 }}</p>
+        <div style="display: flex; gap: 1rem; margin-top: 2rem; justify-content: flex-end;">
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="cancel_sale">
+                <button type="submit" class="btn btn-secondary">Cancel</button>
+            </form>
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="confirm_sale">
+                <button type="submit" class="btn btn-primary" style="background-color: var(--success);">Confirm & Finalize Sale</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const container = document.getElementById('line-items-container');
+    const addLineBtn = document.getElementById('add-line-btn');
+    const stockById = {};
+
+    function createLineItem() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'line-item-row';
+        wrapper.innerHTML = `
+            <div class="form-group">
+                <label>Item Name</label>
+                <select name="stock_id[]" class="form-control stock-select" required>
+                    <option value="">-- Select Item --</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Stock</label>
+                <input type="text" class="form-control available" readonly value="0">
+            </div>
+            <div class="form-group">
+                <label>Price</label>
+                <input type="text" class="form-control price" readonly value="0.00">
+            </div>
+            <div class="form-group">
+                <label>Qty</label>
+                <input type="number" name="quantity[]" class="form-control quantity" min="1" value="1" required>
+            </div>
+            <div class="form-group">
+                <label>Disc (%)</label>
+                <input type="number" name="discount_percent[]" class="form-control discount" min="0" max="100" value="0" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>Total (Inc GST)</label>
+                <input type="text" class="form-control final-price" readonly value="0.00" style="font-weight: 700; color: var(--primary);">
+            </div>
+            <button type="button" class="btn btn-danger btn-remove-line" style="margin-bottom: 1.5rem;">×</button>
+        `;
+
+        const stockSelect = wrapper.querySelector('.stock-select');
+        const availableInput = wrapper.querySelector('.available');
+        const priceInput = wrapper.querySelector('.price');
+        const quantityInput = wrapper.querySelector('.quantity');
+        const discountInput = wrapper.querySelector('.discount');
+        const finalPriceInput = wrapper.querySelector('.final-price');
+        const removeBtn = wrapper.querySelector('.btn-remove-line');
+
+        function recalc() {
+            const quantity = Number(quantityInput.value || 0);
+            const discountPercent = Number(discountInput.value || 0);
+            const price = Number(priceInput.value || 0);
+            
+            const selected = stockById[stockSelect.value];
+            const gstPercent = selected ? Number(selected.gst_percent) : 0;
+
+            const subtotal = quantity * price;
+            const discountAmount = subtotal * (discountPercent / 100);
+            const afterDiscount = subtotal - discountAmount;
+            const gstAmount = afterDiscount * (gstPercent / 100);
+            const lineTotal = afterDiscount + gstAmount;
+
+            finalPriceInput.value = (lineTotal > 0 ? lineTotal : 0).toFixed(2);
+        }
+
+        stockSelect.addEventListener('change', () => {
+            const selected = stockById[stockSelect.value];
+            if (!selected) {
+                availableInput.value = '0';
+                priceInput.value = '0.00';
+                recalc();
+                return;
+            }
+            availableInput.value = selected.quantity;
+            priceInput.value = Number(selected.price).toFixed(2);
+            recalc();
+        });
+
+        quantityInput.addEventListener('input', recalc);
+        discountInput.addEventListener('input', recalc);
+        removeBtn.addEventListener('click', () => {
+            if (container.children.length > 1) wrapper.remove();
+        });
+
+        return wrapper;
+    }
+
+    function populateStockOptions(stockItems) {
+        container.querySelectorAll('.stock-select').forEach((select) => {
+            const current = select.value;
+            select.innerHTML = '<option value="">-- Select Item --</option>';
+            stockItems.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.item_name;
+                select.appendChild(option);
+            });
+            if (current && stockItems.some((item) => String(item.id) === current)) {
+                select.value = current;
+                select.dispatchEvent(new Event('change'));
+            }
+        });
+    }
+
+    async function loadStockForShop() {
+        Object.keys(stockById).forEach((k) => delete stockById[k]);
+        const response = await fetch('/employee-shop-stock/');
+        const data = await response.json();
+        const items = data.stock_items || [];
+        
+        let stockHtml = '<table><thead><tr><th>Item Name</th><th>Price</th><th>GST</th><th>Stock</th></tr></thead><tbody>';
+        if (items.length > 0) {
+            items.forEach((item) => {
+                stockById[String(item.id)] = item;
+                stockHtml += `<tr><td>${item.item_name}</td><td>${Number(item.price).toFixed(2)}</td><td>${item.gst_percent}%</td><td>${item.quantity}</td></tr>`;
+            });
+        } else {
+            stockHtml += '<tr><td colspan="4" class="text-center">No stock available.</td></tr>';
+        }
+        stockHtml += '</tbody></table>';
+        
+        const stockDisplayDiv = document.getElementById('available-stock-container');
+        if (stockDisplayDiv) stockDisplayDiv.innerHTML = stockHtml;
+
+        populateStockOptions(items);
+    }
+
+    addLineBtn.addEventListener('click', () => {
+        const line = createLineItem();
+        container.appendChild(line);
+        populateStockOptions(Object.values(stockById));
+    });
+
+    async function initialize() {
+        container.appendChild(createLineItem());
+        await loadStockForShop();
+    }
+    initialize();
+</script>
+{% endblock %}

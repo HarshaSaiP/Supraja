@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Shop Locations - Supraja{% endblock %}
+
+{% block nav_title %}Shop Management{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'admin_dashboard' %}" class="nav-link">Back to Dashboard</a>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem 2rem;">
+    <div class="title-section" style="margin-bottom: 0;">
+        <h2>Shop Locations</h2>
+        <p>Manage physical shop locations and their staff assignments.</p>
+    </div>
+    <a href="{% url 'create_shop_location' %}" class="btn btn-primary" style="background-color: var(--success);">+ Create New Shop</a>
+</div>
+
+{% if shop_locations %}
+    <div class="grid">
+        {% for shop in shop_locations %}
+            <div class="card" style="display: flex; flex-direction: column; height: 100%;">
+                <div class="title-section">
+                    <h3>{{ shop.name }}</h3>
+                    <p class="small-note">
+                        {% if shop.address %}
+                            {{ shop.address }}
+                        {% else %}
+                            <em>No address provided</em>
+                        {% endif %}
+                    </p>
+                </div>
+                
+                <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: auto;">
+                    <div style="background-color: #f1f5f9; padding: 0.75rem; border-radius: 0.5rem; text-align: center;">
+                        <p class="small-note">Employees</p>
+                        <p style="font-size: 1.25rem; font-weight: 700; color: var(--primary);">{{ shop.employees.count }}</p>
+                    </div>
+                    <div style="background-color: #f1f5f9; padding: 0.75rem; border-radius: 0.5rem; text-align: center;">
+                        <p class="small-note">Created</p>
+                        <p style="font-size: 1rem; font-weight: 700;">{{ shop.created_at|date:"M d, Y" }}</p>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <a href="{% url 'assign_employee_to_shop' shop.id %}" class="btn btn-primary" style="width: 100%;">Manage Staff & Assignments</a>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="card text-center" style="padding: 4rem;">
+        <p style="color: var(--text-light); margin-bottom: 1.5rem;">📭 No shop locations have been created yet.</p>
+        <a href="{% url 'create_shop_location' %}" class="btn btn-primary">Create Your First Shop</a>
+    </div>
+{% endif %}
+{% endblock %}

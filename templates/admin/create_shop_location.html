@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Create Shop Location - Supraja{% endblock %}
+
+{% block nav_title %}Shop Management{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'shop_locations' %}" class="nav-link">Back to Locations</a>
+{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 0 auto;">
+    <div class="card">
+        <div class="title-section">
+            <h2>Create New Shop</h2>
+            <p>Add a new physical store location to the system.</p>
+        </div>
+
+        {% if error %}
+            <div class="card" style="background-color: #fee2e2; border: 1px solid #ef4444; padding: 1rem; margin-bottom: 1.5rem; color: #b91c1c;">
+                {{ error }}
+            </div>
+        {% endif %}
+
+        <form method="POST">
+            {% csrf_token %}
+
+            <div class="form-group">
+                <label for="location_name">Shop Location Name *</label>
+                <input type="text" id="location_name" name="location_name" class="form-control" placeholder="e.g., Downtown Store" required autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="address">Full Address</label>
+                <textarea id="address" name="address" class="form-control" placeholder="Enter shop address" style="min-height: 120px;"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem;">Create Shop Location</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,133 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Supraja</title>
+    <link rel="icon" type="image/png" href="{% static 'logo.png' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #15803d;
+            --primary-dark: #166534;
+            --secondary: #064e3b;
+            --bg: #f0fdf4;
+            --surface: #ffffff;
+            --text: #14532d;
+            --border: #dcfce7;
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-card {
+            background: var(--surface);
+            padding: 2.5rem;
+            border-radius: 1rem;
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+            text-align: center;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.05em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #64748b;
+            margin-bottom: 2rem;
+            font-size: 0.875rem;
+        }
+
+        .form-group { margin-bottom: 1.5rem; }
+        
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 1rem;
+        }
+
+        button:hover {
+            background: var(--primary-dark);
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #b91c1c;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+            <img src="{% static 'logo.png' %}" alt="Supraja Logo" style="height: 60px; border-radius: 0.5rem; margin-bottom: 1rem;">
+            <div class="logo">Supraja</div>
+        </div>
+        <p class="subtitle">Enter your credentials to access the portal</p>
+
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" placeholder="Username" required autofocus>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" placeholder="••••••••" required>
+            </div>
+            <button type="submit">Sign In</button>
+        </form>
+    </div>
+</body>
+</html>

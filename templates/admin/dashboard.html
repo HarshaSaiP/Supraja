@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Supraja{% endblock %}
+
+{% block nav_title %}Admin Control Center{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'logout' %}" class="nav-link" style="background-color: var(--danger);">Logout</a>
+{% endblock %}
+
+{% block extra_style %}
+    .best-seller-banner {
+        background: linear-gradient(135deg, #064e3b 0%, #15803d 50%, #22c55e 100%);
+        border-radius: 0.75rem;
+        padding: 1.5rem 2rem;
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        color: white;
+        box-shadow: 0 10px 25px -5px rgba(21, 128, 61, 0.3);
+        position: relative;
+        overflow: hidden;
+        animation: bannerSlideIn 0.6s ease-out;
+    }
+    .best-seller-banner::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(
+            45deg,
+            transparent 30%,
+            rgba(255,255,255,0.05) 50%,
+            transparent 70%
+        );
+        animation: shimmer 3s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+        0% { transform: translateX(-100%) rotate(0deg); }
+        100% { transform: translateX(100%) rotate(0deg); }
+    }
+    @keyframes bannerSlideIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .best-seller-icon {
+        font-size: 2.5rem;
+        flex-shrink: 0;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        animation: trophyBounce 2s ease-in-out infinite;
+    }
+    @keyframes trophyBounce {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+    }
+    .best-seller-content {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        position: relative;
+        z-index: 1;
+    }
+    .best-seller-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        opacity: 0.85;
+    }
+    .best-seller-name {
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        line-height: 1.2;
+    }
+    .best-seller-qty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: rgba(255,255,255,0.15);
+        backdrop-filter: blur(10px);
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.5rem;
+        flex-shrink: 0;
+        position: relative;
+        z-index: 1;
+    }
+    .best-seller-qty-number {
+        font-size: 1.75rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+    .best-seller-qty-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.85;
+        margin-top: 0.2rem;
+    }
+    @media (max-width: 768px) {
+        .best-seller-banner {
+            padding: 1.25rem;
+            gap: 1rem;
+        }
+        .best-seller-icon {
+            font-size: 2rem;
+        }
+        .best-seller-name {
+            font-size: 1.15rem;
+        }
+        .best-seller-qty-number {
+            font-size: 1.25rem;
+        }
+    }
+{% endblock %}
+
+{% block content %}
+<div class="title-section">
+    <h2>Welcome, {{ user.username }}</h2>
+    <p>Manage your inventory, employees, and sales from one place.</p>
+</div>
+
+<div class="grid">
+    <!-- User Management Section -->
+    <div class="card">
+        <h3>👥 User Management</h3>
+        <p class="small-note mb-4">Manage administrators and employees</p>
+        <div class="mt-4" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <a href="{% url 'create_admin' %}" class="btn btn-primary">Create Admin</a>
+            <a href="{% url 'create_employee' %}" class="btn btn-primary">Create Employee</a>
+        </div>
+    </div>
+
+    <!-- Inventory Section -->
+    <div class="card">
+        <h3>📦 Inventory & Stock</h3>
+        <p class="small-note mb-4">View and manage existing inventory stock</p>
+        <div class="mt-4" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <a href="{% url 'add_stock' %}" class="btn btn-primary">Add New Stock</a>
+            <a href="{% url 'check_stock' %}" class="btn btn-primary">Check Stock</a>
+        </div>
+    </div>
+
+    <!-- Sales & Reporting -->
+    <div class="card">
+        <h3>📊 Sales Reporting</h3>
+        <p class="small-note mb-4">View and filter sales records</p>
+        <div class="mt-4" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <a href="{% url 'admin_sales' %}" class="btn btn-primary">Check Sales Reports</a>
+        </div>
+    </div>
+
+    <!-- Shop Management -->
+    <div class="card">
+        <h3>🏪 Shop Management</h3>
+        <p class="small-note mb-4">Manage locations and assignments</p>
+        <div class="mt-4" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <a href="{% url 'create_shop_location' %}" class="btn btn-primary">Create Shop Location</a>
+            <a href="{% url 'shop_locations' %}" class="btn btn-primary">Assign Employees</a>
+        </div>
+    </div>
+</div>
+
+<!-- Best Seller Banner -->
+{% if best_seller %}
+<div class="best-seller-banner">
+    <div class="best-seller-icon">🏆</div>
+    <div class="best-seller-content">
+        <span class="best-seller-label">Best Seller</span>
+        <span class="best-seller-name">{{ best_seller.item_name }}</span>
+    </div>
+    <div class="best-seller-qty">
+        <span class="best-seller-qty-number">{{ best_seller.total_qty }}</span>
+        <span class="best-seller-qty-label">items sold</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Employee Management Section -->
+<div class="card mt-4">
+    <div class="title-section">
+        <h3>👥 Employee Management</h3>
+        <p class="small-note">View and manage all registered employees.</p>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Assigned Locations</th>
+                    <th style="text-align: right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in employee_rows %}
+                    <tr>
+                        <td style="font-weight: 600;">{{ row.employee.username }}</td>
+                        <td class="small-note">{{ row.employee.email }}</td>
+                        <td class="small-note">{{ row.assigned_locations }}</td>
+                        <td style="text-align: right;">
+                            <a href="{% url 'delete_employee' row.employee.id %}" 
+                               class="btn btn-danger" 
+                               style="padding: 0.3rem 0.6rem; font-size: 0.75rem;"
+                               onclick="return confirm('Are you sure you want to delete this employee? This action cannot be undone.')">Delete</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center" style="padding: 2rem; color: var(--text-light);">No employees registered yet.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

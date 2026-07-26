@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Check Stock - Supraja{% endblock %}
+
+{% block nav_title %}Inventory Management{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'admin_dashboard' %}" class="nav-link">Back to Dashboard</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="title-section">
+        <h2>Check Inventory Stock</h2>
+        <p>Select a location to view the current quantity and value of stock items.</p>
+    </div>
+
+    <form method="GET" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+        <div class="form-group" style="flex: 1; min-width: 300px; margin-bottom: 0;">
+            <label for="shop_location">Shop Location</label>
+            <select id="shop_location" name="shop_location" class="form-control">
+                <option value="">-- Select Shop Location --</option>
+                {% for shop in shop_locations %}
+                    <option value="{{ shop.id }}" {% if selected_shop_location_id == shop.id|stringformat:"s" %}selected{% endif %}>
+                        {{ shop.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">View Stock</button>
+    </form>
+    
+    {% if filter_message %}
+        <p class="small-note mt-4" style="color: var(--danger); font-weight: 600;">{{ filter_message }}</p>
+    {% endif %}
+</div>
+
+{% if selected_shop_location_id %}
+    <div class="card">
+        <div class="title-section">
+            <h3>Stock Details: {{ selected_shop_name }}</h3>
+        </div>
+
+        {% if stock_items %}
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Item Name</th>
+                            <th>Quantity</th>
+                            <th>Price per Unit</th>
+                            <th>Total Value</th>
+                            <th>Last Updated</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in stock_items %}
+                            <tr>
+                                <td><strong>{{ item.item_name }}</strong></td>
+                                <td>{{ item.quantity }}</td>
+                                <td>Rs. {{ item.price|floatformat:2 }}</td>
+                                <td>Rs. {{ item.quantity|multiply:item.price|floatformat:2 }}</td>
+                                <td class="small-note">{{ item.updated_at|date:"M d, Y H:i" }}</td>
+                                <td>
+                                    <form method="post" action="{% url 'delete_stock' item.id %}" style="display:inline;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this stock item?');">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center" style="padding: 3rem; color: var(--text-light);">
+                <p>No stock items found for this location.</p>
+            </div>
+        {% endif %}
+    </div>
+{% else %}
+    <div class="text-center" style="padding: 3rem; color: var(--text-light);">
+        <p>Select a shop location above to view detailed stock information.</p>
+    </div>
+{% endif %}
+{% endblock %}
