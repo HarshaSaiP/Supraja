@@ -77,6 +77,61 @@
 {% endblock %}
 
 {% block content %}
+<!-- Expiring Items Alert -->
+{% if expiring_items %}
+<div class="card" style="margin-bottom: 2rem; border-left: 4px solid #ef4444; background-color: #fef2f2;">
+    <div class="title-section">
+        <h3 style="color: #991b1b; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 1.25rem;">⚠️</span> Items Expiring Soon
+        </h3>
+        <p class="small-note" style="color: #b91c1c;">The following items in your shops will expire within 10 days</p>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Item Name</th>
+                    <th>Shop Location</th>
+                    <th>Batch Number</th>
+                    <th>Expiry Date</th>
+                    <th>Quantity</th>
+                    <th>Days Left</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in expiring_items %}
+                    <tr style="{% if item.exp_date <= today %}background-color: #fee2e2;{% else %}background-color: #fef3c7;{% endif %}">
+                        <td style="font-weight: 600;">{{ item.item_name }}</td>
+                        <td>{{ item.shop_location.name }}</td>
+                        <td>{{ item.batch_number|default:"N/A" }}</td>
+                        <td>
+                            {% if item.exp_date %}
+                                <strong>{{ item.exp_date|date:"d/m/Y" }}</strong>
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>{{ item.quantity }} units</td>
+                        <td>
+                            {% load tz %}
+                            {% now "Y-m-d" as today %}
+                            {% if item.exp_date == today %}
+                                <span style="color: #dc2626; font-weight: 600;">TODAY (URGENT)</span>
+                            {% elif item.exp_date < today %}
+                                <span style="color: #7f1d1d; font-weight: 600;">EXPIRED</span>
+                            {% else %}
+                                <span style="color: #b45309; font-weight: 600;">{{ item.exp_date|timesince }} left</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
 <div class="grid">
     <!-- Sale Section -->
     <div style="grid-column: span 2;">

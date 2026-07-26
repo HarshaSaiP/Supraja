@@ -6,6 +6,7 @@ from django.http import HttpResponse, JsonResponse
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils import timezone
+from datetime import date
 from employee.models import ShopLocation, ShopEmployee, Stock, Sale
 
 def normalize_stock_for_shop(shop_location):
@@ -85,12 +86,22 @@ def admin_dashboard(request):
         .first()
     )
     
+    # Items expiring in less than 10 days
+    from datetime import timedelta
+    expiry_cutoff = date.today() + timedelta(days=10)
+    expiring_items = Stock.objects.filter(
+        exp_date__isnull=False,
+        exp_date__lte=expiry_cutoff,
+        exp_date__gte=date.today()
+    ).select_related('shop_location').order_by('exp_date')
+    
     return render(request, 'admin/dashboard.html', {
         'admin_name': request.user.username,
         'admins': admins,
         'employees': employees,
         'employee_rows': employee_rows,
         'best_seller': best_seller,
+        'expiring_items': expiring_items,
     })
 
 @login_required(login_url='login')
@@ -138,6 +149,16 @@ def employee_dashboard(request):
     ).distinct()
     primary_assigned_shop = assigned_shops.first()
     pending_sale = request.session.get('pending_sale')
+    
+    # Items expiring in less than 10 days for assigned shops
+    from datetime import timedelta
+    expiry_cutoff = date.today() + timedelta(days=10)
+    expiring_items = Stock.objects.filter(
+        shop_location__in=assigned_shops,
+        exp_date__isnull=False,
+        exp_date__lte=expiry_cutoff,
+        exp_date__gte=date.today()
+    ).select_related('shop_location').order_by('exp_date')
 
     if request.method == 'POST':
         if request.POST.get('action') == 'cancel_sale':
@@ -146,6 +167,7 @@ def employee_dashboard(request):
                 'employee_name': request.user.username,
                 'assigned_shops': assigned_shops,
                 'primary_assigned_shop': primary_assigned_shop,
+                'expiring_items': expiring_items,
             })
 
         if request.POST.get('action') == 'confirm_sale':
@@ -156,6 +178,7 @@ def employee_dashboard(request):
                     'assigned_shops': assigned_shops,
                     'primary_assigned_shop': primary_assigned_shop,
                     'error': error,
+                    'expiring_items': expiring_items,
                 })
 
             total_final_price = Decimal('0.00')
@@ -204,6 +227,8 @@ def employee_dashboard(request):
                             shop_location_id=pending_sale['shop_id'],
                             employee=request.user,
                             item_name=stock_item.item_name,
+                            hsn_code=stock_item.hsn_code,
+                            batch_number=stock_item.batch_number,
                             quantity=sell_quantity,
                             unit_price=stock_item.price,
                             discount_percent=discount_percent,
@@ -218,15 +243,10 @@ def employee_dashboard(request):
                     'assigned_shops': assigned_shops,
                     'primary_assigned_shop': primary_assigned_shop,
                     'error': error,
-                })
-
-            request.session.pop('pending_sale', None)
-            success = f"Sale completed successfully. Final amount: Rs. {total_final_price:.2f}"
-            return render(request, 'employee/dashboard.html', {
-                'employee_name': request.user.username,
-                'assigned_shops': assigned_shops,
+                'expiring_items': expiring_items,
                 'primary_assigned_shop': primary_assigned_shop,
                 'success': success,
+                'expiring_items': expiring_items,
             })
 
         stock_ids = request.POST.getlist('stock_id[]')
@@ -240,6 +260,7 @@ def employee_dashboard(request):
                 'assigned_shops': assigned_shops,
                 'primary_assigned_shop': primary_assigned_shop,
                 'error': error,
+                'expiring_items': expiring_items,
             })
 
         sale_lines = []
@@ -264,6 +285,7 @@ def employee_dashboard(request):
                     'employee_name': request.user.username,
                     'assigned_shops': assigned_shops,
                     'error': error,
+                    'expiring_items': expiring_items,
                 })
 
             try:
@@ -275,6 +297,7 @@ def employee_dashboard(request):
                     'assigned_shops': assigned_shops,
                     'primary_assigned_shop': primary_assigned_shop,
                     'error': error,
+                    'expiring_items': expiring_items,
                 })
 
             sale_lines.append({
@@ -290,6 +313,7 @@ def employee_dashboard(request):
                 'assigned_shops': assigned_shops,
                 'primary_assigned_shop': primary_assigned_shop,
                 'error': error,
+                'expiring_items': expiring_items,
             })
 
         preview_lines = []
@@ -327,6 +351,7 @@ def employee_dashboard(request):
                 'assigned_shops': assigned_shops,
                 'primary_assigned_shop': primary_assigned_shop,
                 'error': str(exc),
+                'expiring_items': expiring_items,
             })
 
         request.session['pending_sale'] = {
@@ -347,6 +372,7 @@ def employee_dashboard(request):
             'primary_assigned_shop': primary_assigned_shop,
             'pending_sale_lines': preview_lines,
             'pending_sale_total': preview_total_str,
+            'expiring_items': expiring_items,
         })
 
     pending_sale_lines = []
@@ -386,6 +412,7 @@ def employee_dashboard(request):
         'primary_assigned_shop': primary_assigned_shop,
         'pending_sale_lines': pending_sale_lines,
         'pending_sale_total': pending_sale_total,
+        'expiring_items': expiring_items,
     })
 
 def logout_view(request):
@@ -400,9 +427,30 @@ def add_stock_view(request):
     if request.method == 'POST':
         shop_location_id = request.POST.get('shop_location')
         item_name = request.POST.get('item_name')
+        hsn_code = request.POST.get('hsn_code', '').strip()
+        batch_number = request.POST.get('batch_number', '').strip()
+        manufacturing_date_str = request.POST.get('manufacturing_date', '').strip()
+        exp_date_str = request.POST.get('exp_date', '').strip()
         quantity = request.POST.get('quantity')
         price = request.POST.get('price')
         gst_percent = request.POST.get('gst_percent', '0')
+        
+        # Parse DD/MM/YYYY date format
+        manufacturing_date = None
+        exp_date = None
+        try:
+            if manufacturing_date_str:
+                parts = manufacturing_date_str.split('/')
+                if len(parts) == 3:
+                    manufacturing_date = date(int(parts[2]), int(parts[1]), int(parts[0]))
+            if exp_date_str:
+                parts = exp_date_str.split('/')
+                if len(parts) == 3:
+                    exp_date = date(int(parts[2]), int(parts[1]), int(parts[0]))
+        except (ValueError, IndexError):
+            error = "Invalid date format. Please use DD/MM/YYYY"
+            shop_locations = ShopLocation.objects.all()
+            return render(request, 'admin/add_stock.html', {'error': error, 'shop_locations': shop_locations})
         
         if not item_name or not quantity or not price:
             error = "Item name, quantity, and price are required"
@@ -420,26 +468,40 @@ def add_stock_view(request):
             quantity_to_add = int(quantity)
             unit_price = Decimal(price)
 
+            # Search for matching stocks based on item name, batch number, and manufacturing date
             matching_stocks = Stock.objects.filter(
                 shop_location=shop_location,
-                item_name__iexact=normalized_item_name
+                item_name__iexact=normalized_item_name,
+                batch_number=batch_number if batch_number else None,
+                manufacturing_date=manufacturing_date if manufacturing_date else None
             ).order_by('-updated_at', '-id')
 
             if matching_stocks.exists():
+                # Merge with existing stock
                 primary_stock = matching_stocks.first()
                 duplicate_stocks = list(matching_stocks[1:])
                 duplicate_quantity = sum(stock.quantity for stock in duplicate_stocks)
 
                 primary_stock.quantity += quantity_to_add + duplicate_quantity
                 primary_stock.price = unit_price
+                primary_stock.gst_percent = Decimal(gst_percent)
+                if hsn_code:
+                    primary_stock.hsn_code = hsn_code
+                if exp_date:
+                    primary_stock.exp_date = exp_date
                 primary_stock.save()
 
                 if duplicate_stocks:
                     Stock.objects.filter(id__in=[stock.id for stock in duplicate_stocks]).delete()
             else:
+                # Create new stock item
                 Stock.objects.create(
                     shop_location=shop_location,
                     item_name=normalized_item_name,
+                    hsn_code=hsn_code if hsn_code else None,
+                    batch_number=batch_number if batch_number else None,
+                    manufacturing_date=manufacturing_date if manufacturing_date else None,
+                    exp_date=exp_date if exp_date else None,
                     quantity=quantity_to_add,
                     price=unit_price,
                     gst_percent=Decimal(gst_percent)
@@ -806,3 +868,18 @@ def delete_stock_view(request, stock_id):
             pass
 
     return redirect('check_stock')
+
+@login_required(login_url='login')
+def delete_shop_location_view(request, shop_id):
+    if not request.user.is_superuser:
+        return HttpResponse("Unauthorized", status=403)
+
+    if request.method == 'POST':
+        try:
+            shop_location = ShopLocation.objects.get(id=shop_id)
+            shop_location.delete()
+            return redirect('shop_locations')
+        except ShopLocation.DoesNotExist:
+            pass
+
+    return redirect('shop_locations')

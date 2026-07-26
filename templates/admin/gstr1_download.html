@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Download GSTR-1{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">GSTR-1 Report Download</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Select the date range to download the GSTR-1 report in Excel format.</p>
+                    
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            {% for error in form.non_field_errors %}
+                                <strong>Error:</strong> {{ error }}
+                            {% endfor %}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endif %}
+                    
+                    <form method="POST" class="needs-validation" novalidate>
+                        {% csrf_token %}
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_from_month" class="form-label">From Month</label>
+                                    {{ form.from_month }}
+                                    {% if form.from_month.errors %}
+                                        <small class="text-danger">{{ form.from_month.errors }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_from_year" class="form-label">From Year</label>
+                                    {{ form.from_year }}
+                                    {% if form.from_year.errors %}
+                                        <small class="text-danger">{{ form.from_year.errors }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_to_month" class="form-label">To Month</label>
+                                    {{ form.to_month }}
+                                    {% if form.to_month.errors %}
+                                        <small class="text-danger">{{ form.to_month.errors }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="id_to_year" class="form-label">To Year</label>
+                                    {{ form.to_year }}
+                                    {% if form.to_year.errors %}
+                                        <small class="text-danger">{{ form.to_year.errors }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-download"></i> Download Excel
+                            </button>
+                            <a href="{% url 'admin_dashboard' %}" class="btn btn-secondary">
+                                Back to Dashboard
+                            </a>
+                        </div>
+                    </form>
+                    
+                    <hr class="my-4">
+                    
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card {
+        border: none;
+        border-radius: 8px;
+    }
+    .card-header {
+        border-radius: 8px 8px 0 0;
+    }
+    .form-control, .form-select {
+        border-radius: 4px;
+        border: 1px solid #ddd;
+    }
+    .btn {
+        border-radius: 4px;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}

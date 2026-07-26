@@ -43,8 +43,9 @@
                     </div>
                 </div>
 
-                <div class="mt-4">
+                <div class="mt-4" style="display: flex; flex-direction: column; gap: 0.5rem;">
                     <a href="{% url 'assign_employee_to_shop' shop.id %}" class="btn btn-primary" style="width: 100%;">Manage Staff & Assignments</a>
+                    <button type="button" class="btn btn-primary" style="width: 100%; background-color: var(--danger);" onclick="openDeleteModal({{ shop.id }}, '{{ shop.name }}')">Delete Shop Location</button>
                 </div>
             </div>
         {% endfor %}
@@ -55,4 +56,63 @@
         <a href="{% url 'create_shop_location' %}" class="btn btn-primary">Create Your First Shop</a>
     </div>
 {% endif %}
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="card" style="width: 90%; max-width: 500px; padding: 2rem;">
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+            <h3>Delete Shop Location</h3>
+        </div>
+        
+        <p style="text-align: center; color: var(--text-light); margin-bottom: 1rem;">
+            Are you sure you want to delete the shop location?
+        </p>
+        
+        <p style="text-align: center; font-size: 1.25rem; font-weight: 700; color: var(--danger); margin-bottom: 1.5rem;">
+            <span id="shopNameDisplay"></span>
+        </p>
+        
+        <p style="text-align: center; color: var(--text-light); font-size: 0.9rem; margin-bottom: 2rem;">
+            This action cannot be undone.
+        </p>
+        
+        <div style="display: flex; gap: 1rem; justify-content: center;">
+            <button type="button" class="btn btn-secondary" style="min-width: 150px;" onclick="closeDeleteModal()">Cancel</button>
+            <form id="deleteForm" method="POST" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary" style="background-color: var(--danger); min-width: 150px;">Delete</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    #deleteModal {
+        display: flex;
+    }
+    #deleteModal[style*="display: none"] {
+        display: none !important;
+    }
+</style>
+
+<script>
+    function openDeleteModal(shopId, shopName) {
+        document.getElementById('shopNameDisplay').textContent = shopName;
+        document.getElementById('deleteForm').action = `/delete-shop-location/${shopId}/`;
+        document.getElementById('deleteModal').style.display = 'flex';
+    }
+    
+    function closeDeleteModal() {
+        document.getElementById('deleteModal').style.display = 'none';
+    }
+    
+    // Close modal when clicking outside of it
+    document.getElementById('deleteModal').addEventListener('click', function(event) {
+        if (event.target === this) {
+            closeDeleteModal();
+        }
+    });
+</script>
+
 {% endblock %}

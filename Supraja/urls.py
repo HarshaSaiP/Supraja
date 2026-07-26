@@ -20,7 +20,8 @@ from login.views import (login_view, admin_dashboard, create_admin_view, create_
                         employee_dashboard, logout_view, add_stock_view, check_stock_view,
                         create_shop_location_view, shop_locations_view, assign_employee_to_shop_view,
                         remove_employee_from_shop_view, employee_shop_stock_view, admin_sales_view,
-                        admin_get_sales_data, delete_employee, delete_stock_view)
+                        admin_get_sales_data, delete_employee, delete_stock_view, delete_shop_location_view)
+from admin.views import gstr1_download_view, search_product_names
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -44,4 +45,7 @@ urlpatterns = [
     path('admin-get-sales-data/', admin_get_sales_data, name='admin_get_sales_data'),
     path('delete-employee/<int:user_id>/', delete_employee, name='delete_employee'),
     path('delete-stock/<int:stock_id>/', delete_stock_view, name='delete_stock'),
+    path('delete-shop-location/<int:shop_id>/', delete_shop_location_view, name='delete_shop_location'),
+    path('gstr1-download/', gstr1_download_view, name='gstr1_download'),
+    path('search-product-names/', search_product_names, name='search_product_names'),
 ] + static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])

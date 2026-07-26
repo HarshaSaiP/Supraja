@@ -8,8 +8,52 @@
     <a href="{% url 'admin_dashboard' %}" class="nav-link">Back to Dashboard</a>
 {% endblock %}
 
+{% block extra_css %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        .autocomplete-container {
+            position: relative;
+            width: 100%;
+        }
+        .autocomplete-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid var(--border);
+            border-top: none;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .autocomplete-list.show {
+            display: block;
+        }
+        .autocomplete-item {
+            padding: 0.75rem;
+            cursor: pointer;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+        .autocomplete-item:hover {
+            background-color: #f3f4f6;
+        }
+        .autocomplete-item.selected {
+            background-color: #e0e7ff;
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
-<div style="max-width: 600px; margin: 0 auto;">
+<div style="max-width: 700px; margin: 0 auto;">
     <div class="card">
         <div class="title-section">
             <h2>Add Stock Item</h2>
@@ -37,7 +81,34 @@
 
             <div class="form-group">
                 <label for="item_name">Item Name *</label>
-                <input type="text" id="item_name" name="item_name" class="form-control" placeholder="Enter item name" required>
+                <div class="autocomplete-container">
+                    <input type="text" id="item_name" name="item_name" class="form-control" placeholder="Enter item name" required autocomplete="off">
+                    <ul id="autocomplete-list" class="autocomplete-list"></ul>
+                </div>
+            </div>
+
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="hsn_code">HSN Code</label>
+                    <input type="text" id="hsn_code" name="hsn_code" class="form-control" placeholder="HSN Code">
+                </div>
+
+                <div class="form-group">
+                    <label for="batch_number">Batch Number</label>
+                    <input type="text" id="batch_number" name="batch_number" class="form-control" placeholder="Batch Number">
+                </div>
+            </div>
+
+            <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="manufacturing_date">Manufacturing Date</label>
+                    <input type="text" id="manufacturing_date" name="manufacturing_date" class="form-control" placeholder="DD/MM/YYYY">
+                </div>
+
+                <div class="form-group">
+                    <label for="exp_date">Expiration Date</label>
+                    <input type="text" id="exp_date" name="exp_date" class="form-control" placeholder="DD/MM/YYYY">
+                </div>
             </div>
 
             <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -55,6 +126,7 @@
             <div class="form-group">
                 <label for="gst_percent">GST % *</label>
                 <select id="gst_percent" name="gst_percent" class="form-control" required>
+                    <option value="0">0%</option>
                     <option value="5">5%</option>
                     <option value="18">18%</option>
                 </select>
@@ -64,4 +136,112 @@
         </form>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    // Initialize Flatpickr date pickers with DD/MM/YYYY format
+    flatpickr("#manufacturing_date", {
+        dateFormat: "d/m/Y",
+        placeholder: "DD/MM/YYYY"
+    });
+
+    flatpickr("#exp_date", {
+        dateFormat: "d/m/Y",
+        placeholder: "DD/MM/YYYY"
+    });
+
+    // Autocomplete functionality for item name
+    const itemNameInput = document.getElementById('item_name');
+    const autocompleteList = document.getElementById('autocomplete-list');
+    let selectedIndex = -1;
+    let currentSuggestions = [];
+
+    async function fetchSuggestions(query) {
+        if (query.length < 2) {
+            autocompleteList.classList.remove('show');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/search-product-names/?q=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            currentSuggestions = data.products || [];
+            displaySuggestions(currentSuggestions);
+        } catch (error) {
+            console.error('Error fetching suggestions:', error);
+        }
+    }
+
+    function displaySuggestions(suggestions) {
+        autocompleteList.innerHTML = '';
+        selectedIndex = -1;
+
+        if (suggestions.length === 0) {
+            autocompleteList.classList.remove('show');
+            return;
+        }
+
+        suggestions.forEach((product, index) => {
+            const li = document.createElement('li');
+            li.className = 'autocomplete-item';
+            li.textContent = product;
+            li.dataset.index = index;
+
+            li.addEventListener('click', () => {
+                itemNameInput.value = product;
+                autocompleteList.classList.remove('show');
+                itemNameInput.focus();
+            });
+
+            autocompleteList.appendChild(li);
+        });
+
+        autocompleteList.classList.add('show');
+    }
+
+    function highlightItem(index) {
+        const items = autocompleteList.querySelectorAll('.autocomplete-item');
+        items.forEach((item, i) => {
+            item.classList.toggle('selected', i === index);
+        });
+    }
+
+    itemNameInput.addEventListener('input', (e) => {
+        const query = e.target.value;
+        fetchSuggestions(query);
+    });
+
+    itemNameInput.addEventListener('keydown', (e) => {
+        const items = autocompleteList.querySelectorAll('.autocomplete-item');
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            highlightItem(selectedIndex);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = Math.max(selectedIndex - 1, -1);
+            if (selectedIndex === -1) {
+                highlightItem(-1);
+            } else {
+                highlightItem(selectedIndex);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedIndex >= 0 && selectedIndex < items.length) {
+                itemNameInput.value = currentSuggestions[selectedIndex];
+                autocompleteList.classList.remove('show');
+            }
+        } else if (e.key === 'Escape') {
+            autocompleteList.classList.remove('show');
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (e.target !== itemNameInput && !autocompleteList.contains(e.target)) {
+            autocompleteList.classList.remove('show');
+        }
+    });
+</script>
+
 {% endblock %}
