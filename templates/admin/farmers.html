@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Farmer Management - Supraja{% endblock %}
+
+{% block extra_style %}
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+}
+.modal-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 0.75rem;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+}
+{% endblock %}
+
+{% block nav_title %}Farmer Management{% endblock %}
+
+{% block nav_actions %}
+    <a href="{% url 'admin_dashboard' %}" class="nav-link" style="background-color: var(--secondary);">Back to Dashboard</a>
+    <a href="{% url 'logout' %}" class="nav-link" style="background-color: var(--danger);">Logout</a>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+    <div class="alert alert-danger" style="margin-bottom: 1.5rem; background-color: #fef2f2; border: 1px solid #fecdd3; color: #991b1b; padding: 1rem; border-radius: 0.5rem; font-weight: 500;">
+        ⚠️ {{ error }}
+    </div>
+{% endif %}
+
+{% if success %}
+    <div class="alert alert-success" style="margin-bottom: 1.5rem; background-color: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 1rem; border-radius: 0.5rem; font-weight: 500;">
+        ✅ {{ success }}
+    </div>
+{% endif %}
+
+<div class="title-section">
+    <h2>
+        {% if filter_dues %}
+            ⚠️ Farmers with Outstanding Dues
+        {% else %}
+            🧑‍🌾 All Registered Farmers
+        {% endif %}
+    </h2>
+    <p>View farmers, outstanding dues, and process due payments.</p>
+</div>
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+        <h3 style="margin: 0;">Farmer List</h3>
+        
+        <!-- Search Form -->
+        <form method="GET" style="display: flex; gap: 0.5rem; flex: 1; max-width: 400px; margin: 0 auto;">
+            {% if filter_dues %}
+                <input type="hidden" name="filter" value="dues">
+            {% endif %}
+            <input type="text" name="search" class="form-control" placeholder="Search by name or phone..." value="{{ search_query }}" style="padding: 0.4rem 0.8rem; font-size: 0.875rem;">
+            <button type="submit" class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.875rem;">Search</button>
+            {% if search_query %}
+                <a href="{% url 'admin_farmers' %}{% if filter_dues %}?filter=dues{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.875rem; text-decoration: none;">Clear</a>
+            {% endif %}
+        </form>
+
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="openClearDueModal()" style="background-color: var(--success); padding: 0.4rem 0.8rem; font-size: 0.75rem;">💳 Clear Due</button>
+            <a href="{% url 'all_farmers_due_pdf' %}" class="btn btn-secondary" target="_blank" rel="noopener" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; text-decoration: none;">📄 Download All Due PDF</a>
+            <a href="{% url 'admin_farmers' %}{% if search_query %}?search={{ search_query }}{% endif %}" class="btn {% if not filter_dues %}btn-primary{% else %}btn-secondary{% endif %}" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Show All Farmers</a>
+            <a href="{% url 'admin_farmers' %}?filter=dues{% if search_query %}&search={{ search_query }}{% endif %}" class="btn {% if filter_dues %}btn-primary{% else %}btn-secondary{% endif %}" style="padding: 0.4rem 0.8rem; font-size: 0.75rem; {% if filter_dues %}background-color: var(--warning);{% endif %}">Show Dues</a>
+        </div>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Farmer Name</th>
+                    <th>Phone Number</th>
+                    {% if not filter_dues %}
+                        <th style="text-align: right;">Total Bought (Rs.)</th>
+                        <th style="text-align: right;">Amount Paid (Rs.)</th>
+                    {% endif %}
+                    <th style="text-align: right;">Dues (Rs.)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for farmer in farmers %}
+                    <tr style="{% if farmer.total_dues > 0 %}background-color: #fef2f2;{% endif %}">
+                        <td style="font-weight: 600;">
+                            {% if farmer.due_bills %}
+                                <a href="javascript:void(0)" onclick="toggleDues('details-{{ farmer.id }}')" style="color: #15803d; text-decoration: underline; cursor: pointer;" title="Click to view due details">
+                                    {{ farmer.name }} 🔍
+                                </a>
+                            {% else %}
+                                {{ farmer.name }}
+                            {% endif %}
+                        </td>
+                        <td class="small-note">{{ farmer.phone }}</td>
+                        {% if not filter_dues %}
+                            <td style="text-align: right; font-weight: 600;">{{ farmer.total_bought|floatformat:2 }}</td>
+                            <td style="text-align: right; color: var(--success); font-weight: 500;">{{ farmer.total_paid|floatformat:2 }}</td>
+                        {% endif %}
+                        <td style="text-align: right; font-weight: 700; color: {% if farmer.total_dues > 0 %}#dc2626{% else %}var(--text-light){% endif %};">
+                            {{ farmer.total_dues|floatformat:2 }}
+                        </td>
+                    </tr>
+                    {% if farmer.due_bills %}
+                    <tr id="details-{{ farmer.id }}" style="display: none; background-color: #fff1f2;">
+                        <td colspan="{% if filter_dues %}4{% else %}5{% endif %}" style="padding: 1rem 1.5rem;">
+                            <div style="background: white; border: 1px solid #fecdd3; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <h5 style="color: #991b1b; margin-bottom: 0.75rem; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem;">
+                                    <span>🧾</span> Outstanding Bills Breakdown for {{ farmer.name }}
+                                </h5>
+                                <table style="width: 100%; font-size: 0.825rem; border-collapse: collapse;">
+                                    <thead>
+                                        <tr style="background: #fff5f5; border-bottom: 1px solid #ffe4e6;">
+                                            <th style="padding: 0.5rem; color: #991b1b; text-align: left;">Date & Time</th>
+                                            <th style="padding: 0.5rem; color: #991b1b; text-align: left;">Products (Quantity)</th>
+                                            <th style="padding: 0.5rem; text-align: right; color: #991b1b;">Bill Total</th>
+                                            <th style="padding: 0.5rem; text-align: right; color: #991b1b;">Amount Paid</th>
+                                            <th style="padding: 0.5rem; text-align: right; color: #dc2626;">Due Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for bill in farmer.due_bills %}
+                                        <tr style="border-bottom: 1px dashed #fecdd3;">
+                                            <td style="padding: 0.5rem; color: #4b5563;">{{ bill.date }}</td>
+                                            <td style="padding: 0.5rem; font-weight: 500; color: #1f2937;">{{ bill.products }}</td>
+                                            <td style="padding: 0.5rem; text-align: right; font-weight: 600;">Rs. {{ bill.bill_total|floatformat:2 }}</td>
+                                            <td style="padding: 0.5rem; text-align: right; color: var(--success);">Rs. {{ bill.bill_paid|floatformat:2 }}</td>
+                                            <td style="padding: 0.5rem; text-align: right; font-weight: 700; color: #dc2626;">Rs. {{ bill.due_amount|floatformat:2 }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                {% empty %}
+                    <tr>
+                        <td colspan="{% if filter_dues %}4{% else %}5{% endif %}" class="text-center" style="padding: 2rem; color: var(--text-light);">
+                            {% if filter_dues %}
+                                No farmers have outstanding dues. Great!
+                            {% else %}
+                                No farmers registered yet.
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Clear Due Modal -->
+<div id="clearDueModal" class="modal-overlay">
+    <div class="modal-card">
+        <h3 style="margin-top: 0; margin-bottom: 1rem; color: var(--primary);">💳 Clear Farmer Due</h3>
+        
+        <form method="POST" action="{% url 'clear_farmer_due' %}" id="clearDueForm">
+            {% csrf_token %}
+            
+            <div class="form-group mb-3">
+                <label style="font-weight: 600;">Select Farmer *</label>
+                <select name="farmer_id" id="modal_farmer_select" class="form-control" required style="width: 100%; padding: 0.5rem;">
+                    <option value="">-- Choose Farmer --</option>
+                    {% for farmer in farmers %}
+                        {% if farmer.total_dues > 0 %}
+                            <option value="{{ farmer.id }}" data-due="{{ farmer.total_dues }}">
+                                {{ farmer.name }} (Phone: {{ farmer.phone }}) — Due: Rs. {{ farmer.total_dues|floatformat:2 }}
+                            </option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div id="due_display_box" style="display: none; background: #fef2f2; border: 1px solid #fecdd3; padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+                <span style="font-size: 0.875rem; color: #991b1b; font-weight: 600;">Total Outstanding Due:</span>
+                <span id="modal_total_due" style="font-size: 1.1rem; font-weight: 700; color: #dc2626; float: right;">Rs. 0.00</span>
+            </div>
+            
+            <div class="form-group mb-3">
+                <label style="font-weight: 600;">Amount to Clear (Rs.) *</label>
+                <input type="number" step="0.01" min="0.01" name="clear_amount" id="modal_clear_amount" class="form-control" placeholder="Enter amount to pay" required style="width: 100%; padding: 0.5rem;">
+                <small id="amount_error_msg" style="color: #dc2626; display: none; margin-top: 0.25rem; font-weight: 600;"></small>
+            </div>
+            
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" onclick="closeClearDueModal()">Cancel</button>
+                <button type="button" class="btn btn-secondary" id="download_due_pdf_btn" onclick="downloadSelectedFarmerDue()" style="background-color: var(--secondary);">Download PDF</button>
+                <button type="submit" id="modal_submit_btn" class="btn btn-primary" style="background-color: var(--success);" disabled>Confirm Payment</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function toggleDues(elementId) {
+        const row = document.getElementById(elementId);
+        if (row) {
+            if (row.style.display === 'none' || row.style.display === '') {
+                row.style.display = 'table-row';
+            } else {
+                row.style.display = 'none';
+            }
+        }
+    }
+
+    const modal = document.getElementById('clearDueModal');
+    const farmerSelect = document.getElementById('modal_farmer_select');
+    const dueDisplayBox = document.getElementById('due_display_box');
+    const modalTotalDue = document.getElementById('modal_total_due');
+    const clearAmountInput = document.getElementById('modal_clear_amount');
+    const amountErrorMsg = document.getElementById('amount_error_msg');
+    const submitBtn = document.getElementById('modal_submit_btn');
+
+    let currentFarmerDue = 0;
+
+    function openClearDueModal(farmerId = null, dueAmount = null) {
+        modal.style.display = 'flex';
+        clearAmountInput.value = '';
+        amountErrorMsg.style.display = 'none';
+        submitBtn.disabled = true;
+
+        if (farmerId) {
+            farmerSelect.value = farmerId;
+            updateFarmerDueInfo();
+        } else {
+            farmerSelect.value = '';
+            dueDisplayBox.style.display = 'none';
+        }
+    }
+
+    function closeClearDueModal() {
+        modal.style.display = 'none';
+    }
+
+    function updateFarmerDueInfo() {
+        const selectedOption = farmerSelect.options[farmerSelect.selectedIndex];
+        if (selectedOption && selectedOption.value) {
+            currentFarmerDue = parseFloat(selectedOption.getAttribute('data-due')) || 0;
+            modalTotalDue.textContent = 'Rs. ' + currentFarmerDue.toFixed(2);
+            dueDisplayBox.style.display = 'block';
+        } else {
+            currentFarmerDue = 0;
+            dueDisplayBox.style.display = 'none';
+        }
+        validateAmount();
+    }
+
+    function downloadSelectedFarmerDue() {
+        const farmerId = farmerSelect.value;
+        if (!farmerId) {
+            amountErrorMsg.textContent = 'Please select a farmer first.';
+            amountErrorMsg.style.display = 'block';
+            return;
+        }
+        amountErrorMsg.style.display = 'none';
+        window.location.href = `/farmer-due-pdf/${farmerId}/`;
+    }
+
+    function validateAmount() {
+        const enteredVal = parseFloat(clearAmountInput.value);
+        if (!farmerSelect.value) {
+            amountErrorMsg.style.display = 'none';
+            submitBtn.disabled = true;
+            return;
+        }
+
+        if (isNaN(enteredVal) || enteredVal <= 0) {
+            amountErrorMsg.textContent = 'Please enter a valid positive amount.';
+            amountErrorMsg.style.display = 'block';
+            submitBtn.disabled = true;
+        } else if (enteredVal > currentFarmerDue + 0.001) {
+            amountErrorMsg.textContent = `Amount cannot exceed total due of Rs. ${currentFarmerDue.toFixed(2)}`;
+            amountErrorMsg.style.display = 'block';
+            submitBtn.disabled = true;
+        } else {
+            amountErrorMsg.style.display = 'none';
+            submitBtn.disabled = false;
+        }
+    }
+
+    farmerSelect.addEventListener('change', updateFarmerDueInfo);
+    clearAmountInput.addEventListener('input', validateAmount);
+</script>
+{% endblock %}

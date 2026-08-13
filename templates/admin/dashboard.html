@@ -23,7 +23,22 @@
         overflow: hidden;
         animation: bannerSlideIn 0.6s ease-out;
     }
-    .best-seller-banner::before {
+    .best-customer-banner {
+        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);
+        border-radius: 0.75rem;
+        padding: 1.5rem 2rem;
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        color: white;
+        box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.3);
+        position: relative;
+        overflow: hidden;
+        animation: bannerSlideIn 0.7s ease-out;
+    }
+    .best-seller-banner::before,
+    .best-customer-banner::before {
         content: '';
         position: absolute;
         top: -50%;
@@ -114,6 +129,10 @@
         .best-seller-qty-number {
             font-size: 1.25rem;
         }
+        .best-customer-banner {
+            padding: 1.25rem;
+            gap: 1rem;
+        }
     }
 {% endblock %}
 
@@ -163,6 +182,16 @@
             <a href="{% url 'shop_locations' %}" class="btn btn-primary">Assign Employees</a>
         </div>
     </div>
+
+    <!-- Farmer Management -->
+    <div class="card">
+        <h3>🧑‍🌾 Farmer Management</h3>
+        <p class="small-note mb-4">View farmers and their dues</p>
+        <div class="mt-4" style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <a href="{% url 'admin_farmers' %}" class="btn btn-primary">Show Farmers</a>
+            <a href="{% url 'admin_farmers' %}?filter=dues" class="btn btn-primary" style="background-color: var(--warning);">Show Dues</a>
+        </div>
+    </div>
 </div>
 
 <!-- Best Seller Banner -->
@@ -176,6 +205,21 @@
     <div class="best-seller-qty">
         <span class="best-seller-qty-number">{{ best_seller.total_qty }}</span>
         <span class="best-seller-qty-label">items sold</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Best Customer Banner -->
+{% if best_customer %}
+<div class="best-customer-banner">
+    <div class="best-seller-icon">👑</div>
+    <div class="best-seller-content">
+        <span class="best-seller-label">Top Customer</span>
+        <span class="best-seller-name">{{ best_customer.farmer_name }}</span>
+    </div>
+    <div class="best-seller-qty" style="background: rgba(255,255,255,0.2);">
+        <span class="best-seller-qty-number" style="font-size: 1.5rem;">Rs. {{ best_customer.total_spent|floatformat:0 }}</span>
+        <span class="best-seller-qty-label">Total Spent</span>
     </div>
 </div>
 {% endif %}

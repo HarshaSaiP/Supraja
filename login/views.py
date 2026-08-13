@@ -3,11 +3,30 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
+from django.conf import settings
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils import timezone
 from datetime import date
-from employee.models import ShopLocation, ShopEmployee, Stock, Sale
+from employee.models import ShopLocation, ShopEmployee, Stock, Sale, Farmer
+
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.units import mm
+    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+except ImportError:  # pragma: no cover
+    colors = None
+    A4 = None
+    getSampleStyleSheet = None
+    mm = None
+    Image = None
+    Paragraph = None
+    SimpleDocTemplate = None
+    Spacer = None
+    Table = None
+    TableStyle = None
 
 def normalize_stock_for_shop(shop_location):
     shop_stock = Stock.objects.filter(shop_location=shop_location).order_by('-updated_at', '-id')
@@ -86,6 +105,17 @@ def admin_dashboard(request):
         .first()
     )
     
+    # Best customer by total money spent
+    best_customer = (
+        Sale.objects
+        .exclude(farmer_name__isnull=True)
+        .exclude(farmer_name='')
+        .values('farmer_name')
+        .annotate(total_spent=Sum('total_amount'))
+        .order_by('-total_spent')
+        .first()
+    )
+    
     # Items expiring in less than 10 days
     from datetime import timedelta
     expiry_cutoff = date.today() + timedelta(days=10)
@@ -101,6 +131,7 @@ def admin_dashboard(request):
         'employees': employees,
         'employee_rows': employee_rows,
         'best_seller': best_seller,
+        'best_customer': best_customer,
         'expiring_items': expiring_items,
     })
 
@@ -181,6 +212,125 @@ def employee_dashboard(request):
                     'expiring_items': expiring_items,
                 })
 
+            # Get farmer details from the form
+            farmer_name = request.POST.get('farmer_name', '').strip()
+            farmer_phone = request.POST.get('farmer_phone', '').strip()
+            amount_paid_raw = request.POST.get('amount_paid', '').strip()
+
+            if not farmer_name or not farmer_phone or not amount_paid_raw:
+                error = "Please fill in Farmer Name, Farmer Phone Number, and Amount Paid."
+                # Re-build preview lines for the modal
+                preview_lines = []
+                preview_total = Decimal('0.00')
+                for line in pending_sale.get('lines', []):
+                    stock_item = Stock.objects.filter(id=line['stock_id']).first()
+                    if not stock_item:
+                        continue
+                    dp = Decimal(str(line['discount_percent']))
+                    qty = int(line['quantity'])
+                    sub = stock_item.price * qty
+                    da = (sub * dp) / Decimal('100')
+                    pad = sub - da
+                    ga = (pad * stock_item.gst_percent) / Decimal('100')
+                    lt = pad + ga
+                    preview_lines.append({
+                        'item_name': stock_item.item_name,
+                        'unit_price': stock_item.price,
+                        'quantity': qty,
+                        'discount_percent': dp,
+                        'gst_percent': stock_item.gst_percent,
+                        'gst_amount': ga,
+                        'line_total': lt,
+                    })
+                    preview_total += lt
+                return render(request, 'employee/dashboard.html', {
+                    'employee_name': request.user.username,
+                    'assigned_shops': assigned_shops,
+                    'primary_assigned_shop': primary_assigned_shop,
+                    'error': error,
+                    'pending_sale_lines': preview_lines,
+                    'pending_sale_total': f"{preview_total:.2f}",
+                    'expiring_items': expiring_items,
+                })
+
+            try:
+                amount_paid = Decimal(amount_paid_raw)
+            except (InvalidOperation, ValueError):
+                error = "Invalid amount paid. Please enter a valid number."
+                return render(request, 'employee/dashboard.html', {
+                    'employee_name': request.user.username,
+                    'assigned_shops': assigned_shops,
+                    'primary_assigned_shop': primary_assigned_shop,
+                    'error': error,
+                    'expiring_items': expiring_items,
+                })
+
+            if not amount_paid.is_finite() or amount_paid < 0:
+                error = "Amount paid cannot be negative or invalid."
+                return render(request, 'employee/dashboard.html', {
+                    'employee_name': request.user.username,
+                    'assigned_shops': assigned_shops,
+                    'primary_assigned_shop': primary_assigned_shop,
+                    'error': error,
+                    'expiring_items': expiring_items,
+                })
+
+            # Validate phone: must be exactly 10 digits and not all same digits
+            phone_digits = ''.join(c for c in farmer_phone if c.isdigit())
+            if len(phone_digits) != 10:
+                error = "Farmer phone number must be exactly 10 digits."
+                return render(request, 'employee/dashboard.html', {
+                    'employee_name': request.user.username,
+                    'assigned_shops': assigned_shops,
+                    'primary_assigned_shop': primary_assigned_shop,
+                    'error': error,
+                    'expiring_items': expiring_items,
+                })
+            elif len(set(phone_digits)) == 1:
+                error = "Farmer phone number cannot be all the same digits."
+                return render(request, 'employee/dashboard.html', {
+                    'employee_name': request.user.username,
+                    'assigned_shops': assigned_shops,
+                    'primary_assigned_shop': primary_assigned_shop,
+                    'error': error,
+                    'expiring_items': expiring_items,
+                })
+
+            # Calculate the bill total to validate amount_paid
+            bill_total = Decimal('0.00')
+            for line in pending_sale.get('lines', []):
+                stock_item = Stock.objects.filter(id=line['stock_id']).first()
+                if not stock_item:
+                    continue
+                dp = Decimal(str(line['discount_percent']))
+                qty = int(line['quantity'])
+                sub = stock_item.price * qty
+                da = (sub * dp) / Decimal('100')
+                pad = sub - da
+                ga = (pad * stock_item.gst_percent) / Decimal('100')
+                bill_total += pad + ga
+
+            if amount_paid > bill_total:
+                error = f"Amount paid (Rs. {amount_paid:.2f}) cannot exceed the bill total (Rs. {bill_total:.2f})."
+                return render(request, 'employee/dashboard.html', {
+                    'employee_name': request.user.username,
+                    'assigned_shops': assigned_shops,
+                    'primary_assigned_shop': primary_assigned_shop,
+                    'error': error,
+                    'expiring_items': expiring_items,
+                })
+
+            # Get or create the Farmer record
+            farmer, _created = Farmer.objects.get_or_create(
+                name__iexact=farmer_name,
+                phone=farmer_phone,
+                defaults={'name': farmer_name, 'phone': farmer_phone}
+            )
+            # Update name casing if needed
+            if not _created and farmer.name != farmer_name:
+                farmer.name = farmer_name
+                farmer.save()
+
             total_final_price = Decimal('0.00')
             try:
                 with transaction.atomic():
@@ -226,6 +376,10 @@ def employee_dashboard(request):
                         Sale.objects.create(
                             shop_location_id=pending_sale['shop_id'],
                             employee=request.user,
+                            farmer=farmer,
+                            farmer_name=farmer_name,
+                            farmer_phone=farmer_phone,
+                            amount_paid=amount_paid,
                             item_name=stock_item.item_name,
                             hsn_code=stock_item.hsn_code,
                             batch_number=stock_item.batch_number,
@@ -243,7 +397,15 @@ def employee_dashboard(request):
                     'assigned_shops': assigned_shops,
                     'primary_assigned_shop': primary_assigned_shop,
                     'error': error,
-                'expiring_items': expiring_items,
+                    'expiring_items': expiring_items,
+                })
+
+            # Sale successful — clear session and show success
+            request.session.pop('pending_sale', None)
+            success = f"Sale confirmed successfully! Total: Rs. {total_final_price:.2f} | Farmer: {farmer_name} | Amount Paid: Rs. {amount_paid:.2f}"
+            return render(request, 'employee/dashboard.html', {
+                'employee_name': request.user.username,
+                'assigned_shops': assigned_shops,
                 'primary_assigned_shop': primary_assigned_shop,
                 'success': success,
                 'expiring_items': expiring_items,
@@ -816,6 +978,7 @@ def admin_get_sales_data(request):
             'date': timezone.localtime(s.sale_date).strftime('%d-%m-%Y %I:%M %p'),
             'item_name': s.item_name,
             'employee': s.employee.username,
+            'farmer_name': s.farmer_name or 'N/A',
             'quantity': s.quantity,
             'discount': str(s.discount_percent),
             'gst_percent': str(s.gst_percent),
@@ -883,3 +1046,338 @@ def delete_shop_location_view(request, shop_id):
             pass
 
     return redirect('shop_locations')
+
+@login_required(login_url='login')
+def farmer_search_view(request):
+    """API endpoint to search farmers by name for autocomplete suggestions."""
+    query = request.GET.get('q', '').strip()
+    if not query or len(query) < 1:
+        return JsonResponse({'farmers': []})
+
+    farmers = Farmer.objects.filter(name__icontains=query).values('name', 'phone')[:10]
+    return JsonResponse({'farmers': list(farmers)})
+
+def _build_farmer_due_pdf_bytes(rows, title='Farmer Due Statement'):
+    if not rows:
+        rows = [{"name": "No Farmer", "phone": "-", "due_amount": Decimal('0.00')}]
+
+    logo_path = settings.BASE_DIR / 'static' / 'logo.png'
+    styles = getSampleStyleSheet()
+    title_style = styles['Title']
+    title_style.fontName = 'Helvetica-Bold'
+    title_style.fontSize = 18
+    title_style.textColor = colors.HexColor('#166534')
+    title_style.alignment = 1
+
+    body_style = styles['BodyText']
+    body_style.fontName = 'Helvetica'
+    body_style.fontSize = 10
+    body_style.leading = 14
+
+    table_data = [[Paragraph('<b>Farmer Name</b>', body_style), Paragraph('<b>Phone Number</b>', body_style), Paragraph('<b>Due Amount</b>', body_style)]]
+    for row in rows:
+        table_data.append([
+            Paragraph(str(row.get('name', 'Unknown Farmer')), body_style),
+            Paragraph(str(row.get('phone', '-')), body_style),
+            Paragraph(f'Rs. {Decimal(str(row.get("due_amount", 0))):.2f}', body_style),
+        ])
+
+    table = Table(table_data, colWidths=[170, 140, 120], repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#15803d')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#bbf7d0')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0fdf4')]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 7),
+        ('TOPPADDING', (0, 1), (-1, -1), 7),
+    ]))
+
+    story = []
+    if logo_path.exists():
+        story.append(Image(str(logo_path), width=28*mm, height=20*mm))
+        story.append(Spacer(1, 8))
+    story.append(Paragraph(title, title_style))
+    story.append(Spacer(1, 14))
+    story.append(table)
+    story.append(Spacer(1, 16))
+    story.append(Paragraph('Supraja Farmer Due Statement', body_style))
+
+    buffer = __import__('io').BytesIO()
+    document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=24, rightMargin=24, topMargin=20, bottomMargin=20)
+    document.build(story)
+    return buffer.getvalue()
+
+
+@login_required(login_url='login')
+def farmer_due_pdf_view(request, farmer_id=None):
+    if not request.user.is_superuser:
+        return HttpResponse("Unauthorized", status=403)
+
+    if farmer_id is not None:
+        farmer = Farmer.objects.filter(id=farmer_id).first()
+        if not farmer:
+            return HttpResponse("Farmer not found", status=404)
+        farmer_rows = [{
+            'name': farmer.name,
+            'phone': farmer.phone,
+            'due_amount': Decimal('0.00'),
+        }]
+        sales = Sale.objects.filter(farmer=farmer).order_by('sale_date')
+        current_bill_sales = []
+        bills = []
+
+        for sale in sales:
+            if not current_bill_sales:
+                current_bill_sales.append(sale)
+            else:
+                time_diff = (sale.sale_date - current_bill_sales[0].sale_date).total_seconds()
+                if abs(time_diff) < 5:
+                    current_bill_sales.append(sale)
+                else:
+                    bills.append(current_bill_sales)
+                    current_bill_sales = [sale]
+        if current_bill_sales:
+            bills.append(current_bill_sales)
+
+        for bill_sales in bills:
+            bill_total = sum(s.total_amount for s in bill_sales)
+            bill_paid = bill_sales[0].amount_paid
+            due = bill_total - bill_paid
+            if due > 0:
+                farmer_rows[0]['due_amount'] += due
+
+        pdf_data = _build_farmer_due_pdf_bytes([
+            {
+                'name': farmer_rows[0]['name'],
+                'phone': farmer_rows[0]['phone'],
+                'due_amount': farmer_rows[0]['due_amount'],
+            }
+        ], f"Farmer Due Statement - {farmer.name}")
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        filename = f"farmer_due_{farmer.name.replace(' ', '_')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    farmer_rows = []
+    for farmer in Farmer.objects.all():
+        sales = Sale.objects.filter(farmer=farmer).order_by('sale_date')
+        current_bill_sales = []
+        bills = []
+
+        for sale in sales:
+            if not current_bill_sales:
+                current_bill_sales.append(sale)
+            else:
+                time_diff = (sale.sale_date - current_bill_sales[0].sale_date).total_seconds()
+                if abs(time_diff) < 5:
+                    current_bill_sales.append(sale)
+                else:
+                    bills.append(current_bill_sales)
+                    current_bill_sales = [sale]
+        if current_bill_sales:
+            bills.append(current_bill_sales)
+
+        total_due = Decimal('0.00')
+        for bill_sales in bills:
+            bill_total = sum(s.total_amount for s in bill_sales)
+            bill_paid = bill_sales[0].amount_paid
+            due = bill_total - bill_paid
+            if due > 0:
+                total_due += due
+
+        if total_due > 0:
+            farmer_rows.append({
+                'name': farmer.name,
+                'phone': farmer.phone,
+                'due_amount': total_due,
+            })
+
+    if not farmer_rows:
+        return HttpResponse("No farmers with dues found", status=404)
+
+    pdf_data = _build_farmer_due_pdf_bytes(farmer_rows, 'All Farmers with Due Amounts')
+    response = HttpResponse(pdf_data, content_type='application/pdf')
+    response['Content-Disposition'] = 'attachment; filename="all_farmers_due.pdf"'
+    return response
+
+
+@login_required(login_url='login')
+def admin_farmers_view(request):
+    if not request.user.is_superuser:
+        return HttpResponse("Unauthorized", status=403)
+        
+    from django.db.models import Q
+
+    filter_dues = request.GET.get('filter') == 'dues'
+    search_query = request.GET.get('search', '').strip()
+    
+    if search_query:
+        all_farmers = Farmer.objects.filter(
+            Q(name__icontains=search_query) | Q(phone__icontains=search_query)
+        )
+    else:
+        all_farmers = Farmer.objects.all()
+    
+    farmer_data_list = []
+    
+    for farmer in all_farmers:
+        # Get all sales for this farmer, ordered by date
+        sales = Sale.objects.filter(farmer=farmer).order_by('sale_date')
+        
+        total_bought = Decimal('0.00')
+        total_paid = Decimal('0.00')
+        due_bills = []
+        
+        current_bill_sales = []
+        
+        def process_bill_sales(bill_sales):
+            nonlocal total_bought, total_paid
+            if not bill_sales:
+                return
+            bill_total = sum(s.total_amount for s in bill_sales)
+            bill_paid = bill_sales[0].amount_paid
+            total_bought += bill_total
+            total_paid += bill_paid
+            
+            due = bill_total - bill_paid
+            if due > 0:
+                products_str = ", ".join([f"{s.item_name} (x{s.quantity})" for s in bill_sales])
+                due_bills.append({
+                    'date': timezone.localtime(bill_sales[0].sale_date).strftime('%d-%m-%Y %I:%M %p'),
+                    'products': products_str,
+                    'bill_total': bill_total,
+                    'bill_paid': bill_paid,
+                    'due_amount': due,
+                })
+
+        for sale in sales:
+            if not current_bill_sales:
+                current_bill_sales.append(sale)
+            else:
+                # Group if sales are within 5 seconds of each other
+                time_diff = (sale.sale_date - current_bill_sales[0].sale_date).total_seconds()
+                if abs(time_diff) < 5:
+                    current_bill_sales.append(sale)
+                else:
+                    process_bill_sales(current_bill_sales)
+                    current_bill_sales = [sale]
+                    
+        # Process the last bill
+        process_bill_sales(current_bill_sales)
+            
+        total_dues = total_bought - total_paid
+        if total_dues < 0: 
+            total_dues = Decimal('0.00')
+            
+        # Only add to list if not filtering by dues OR if filtering by dues and dues > 0
+        if not filter_dues or total_dues > 0:
+            farmer_data_list.append({
+                'id': farmer.id,
+                'name': farmer.name,
+                'phone': farmer.phone,
+                'total_bought': total_bought,
+                'total_paid': total_paid,
+                'total_dues': total_dues,
+                'due_bills': due_bills,
+            })
+            
+    # Sort by name ascending
+    farmer_data_list.sort(key=lambda x: x['name'].lower())
+    
+    return render(request, 'admin/farmers.html', {
+        'farmers': farmer_data_list,
+        'filter_dues': filter_dues,
+        'search_query': search_query,
+        'error': request.GET.get('error'),
+        'success': request.GET.get('success'),
+    })
+
+@login_required(login_url='login')
+def clear_farmer_due_view(request):
+    if not request.user.is_superuser:
+        return HttpResponse("Unauthorized", status=403)
+        
+    if request.method == 'POST':
+        farmer_id = request.POST.get('farmer_id')
+        try:
+            clear_amount = Decimal(request.POST.get('clear_amount', '0'))
+        except (ValueError, InvalidOperation):
+            clear_amount = Decimal('0.00')
+
+        if clear_amount <= 0:
+            return redirect('/admin-farmers/?filter=dues')
+            
+        farmer = Farmer.objects.filter(id=farmer_id).first()
+        if not farmer:
+            return redirect('/admin-farmers/?filter=dues')
+
+        # Fetch sales and group into bills
+        sales = Sale.objects.filter(farmer=farmer).order_by('sale_date')
+        bills = []
+        current_bill_sales = []
+
+        for sale in sales:
+            if not current_bill_sales:
+                current_bill_sales.append(sale)
+            else:
+                time_diff = (sale.sale_date - current_bill_sales[0].sale_date).total_seconds()
+                if abs(time_diff) < 5:
+                    current_bill_sales.append(sale)
+                else:
+                    bills.append(current_bill_sales)
+                    current_bill_sales = [sale]
+        if current_bill_sales:
+            bills.append(current_bill_sales)
+
+        # Calculate due per bill
+        due_bills = []
+        total_farmer_dues = Decimal('0.00')
+        for bill_sales in bills:
+            bill_total = sum(s.total_amount for s in bill_sales)
+            bill_paid = bill_sales[0].amount_paid
+            due = bill_total - bill_paid
+            if due > 0:
+                total_farmer_dues += due
+                due_bills.append({
+                    'sales': bill_sales,
+                    'bill_total': bill_total,
+                    'bill_paid': bill_paid,
+                    'due': due,
+                })
+
+        # Validate clear_amount <= total_farmer_dues
+        if clear_amount > total_farmer_dues:
+            error_msg = f"Clear amount (Rs. {clear_amount:.2f}) cannot exceed total dues (Rs. {total_farmer_dues:.2f})."
+            from urllib.parse import quote
+            return redirect(f'/admin-farmers/?filter=dues&error={quote(error_msg)}')
+
+        # Sort due_bills by due amount descending (deduct from bill with highest due first)
+        due_bills.sort(key=lambda b: b['due'], reverse=True)
+
+        # Distribute clear_amount
+        remaining = clear_amount
+        for b in due_bills:
+            if remaining <= 0:
+                break
+            add_to_bill = min(remaining, b['due'])
+            new_bill_paid = b['bill_paid'] + add_to_bill
+            
+            for sale in b['sales']:
+                sale.amount_paid = new_bill_paid
+                sale.save()
+
+            remaining -= add_to_bill
+
+        success_msg = f"Successfully cleared Rs. {clear_amount:.2f} for {farmer.name}!"
+        from urllib.parse import quote
+        return redirect(f'/admin-farmers/?filter=dues&success={quote(success_msg)}')
+
+    return redirect('/admin-farmers/?filter=dues')

@@ -23,6 +23,19 @@ class ShopEmployee(models.Model):
     def __str__(self):
         return f"{self.employee.username} - {self.shop_location.name}"
 
+class Farmer(models.Model):
+    name = models.CharField(max_length=255)
+    phone = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} - {self.phone}"
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ['name', 'phone']
+
 class Stock(models.Model):
     shop_location = models.ForeignKey(ShopLocation, on_delete=models.CASCADE, related_name='stock_items')
     item_name = models.CharField(max_length=255)
@@ -45,6 +58,10 @@ class Stock(models.Model):
 class Sale(models.Model):
     shop_location = models.ForeignKey(ShopLocation, on_delete=models.CASCADE, related_name='sales')
     employee = models.ForeignKey(User, on_delete=models.CASCADE)
+    farmer = models.ForeignKey(Farmer, on_delete=models.SET_NULL, null=True, blank=True, related_name='sales')
+    farmer_name = models.CharField(max_length=255, blank=True, null=True)
+    farmer_phone = models.CharField(max_length=20, blank=True, null=True)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     item_name = models.CharField(max_length=255)
     hsn_code = models.CharField(max_length=50, blank=True, null=True)
     batch_number = models.CharField(max_length=100, blank=True, null=True)

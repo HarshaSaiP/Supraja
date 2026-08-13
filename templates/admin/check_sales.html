@@ -99,6 +99,7 @@
                         <th>Date & Time</th>
                         <th>Item Name</th>
                         <th>Employee</th>
+                        <th>Farmer Name</th>
                         <th>Quantity</th>
                         <th>Discount (%)</th>
                         <th>GST (%)</th>
@@ -110,11 +111,11 @@
                 </tbody>
                 <tfoot>
                     <tr class="total-row">
-                        <td colspan="7" style="text-align: right;">Total GST Amount:</td>
+                        <td colspan="8" style="text-align: right;">Total GST Amount:</td>
                         <td id="total_gst_display" style="color: var(--primary);">Rs. 0.00</td>
                     </tr>
                     <tr class="total-row">
-                        <td colspan="7" style="text-align: right;">Total Sales Amount (Incl. GST):</td>
+                        <td colspan="8" style="text-align: right;">Total Sales Amount (Incl. GST):</td>
                         <td id="total_amount_display">Rs. 0.00</td>
                     </tr>
                 </tfoot>
@@ -245,7 +246,7 @@
         function renderTable(sales, total, totalGst) {
             salesTbody.innerHTML = '';
             if (sales.length === 0) {
-                salesTbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-light);">No sales found for the selected filters.</td></tr>';
+                salesTbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 2rem; color: var(--text-light);">No sales found for the selected filters.</td></tr>';
             } else {
                 sales.forEach(sale => {
                     const row = `
@@ -253,6 +254,7 @@
                             <td>${sale.date}</td>
                             <td>${sale.item_name}</td>
                             <td>${sale.employee}</td>
+                            <td>${sale.farmer_name}</td>
                             <td>${sale.quantity}</td>
                             <td>${Number(sale.discount).toFixed(2)}%</td>
                             <td>${Number(sale.gst_percent).toFixed(0)}%</td>

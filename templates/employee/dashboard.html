@@ -77,6 +77,17 @@
 {% endblock %}
 
 {% block content %}
+<!-- Error/Success Messages -->
+{% if error %}
+<div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid #ef4444; background-color: #fef2f2; padding: 1rem 1.5rem;">
+    <p style="color: #991b1b; font-weight: 600;">❌ {{ error }}</p>
+</div>
+{% endif %}
+{% if success %}
+<div class="card" style="margin-bottom: 1.5rem; border-left: 4px solid #22c55e; background-color: #f0fdf4; padding: 1rem 1.5rem;">
+    <p style="color: #166534; font-weight: 600;">✅ {{ success }}</p>
+</div>
+{% endif %}
 <!-- Expiring Items Alert -->
 {% if expiring_items %}
 <div class="card" style="margin-bottom: 2rem; border-left: 4px solid #ef4444; background-color: #fef2f2;">
@@ -205,16 +216,45 @@
             </table>
         </div>
         <p class="preview-total">Final Amount: Rs. {{ pending_sale_total|floatformat:2 }}</p>
+
+        <!-- Farmer Details Section -->
+        <div style="margin-top: 2rem; padding: 1.5rem; background: #f0fdf4; border-radius: 0.75rem; border: 1px solid #bbf7d0;">
+            <h4 style="margin-bottom: 1rem; color: #166534; display: flex; align-items: center; gap: 0.5rem;">
+                <span>🧑‍🌾</span> Farmer Details
+            </h4>
+            <p style="font-size: 0.85rem; color: #4b5563; margin-bottom: 1rem;">Fill in all farmer details to activate the Confirm button.</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
+                <div class="form-group" style="position: relative;">
+                    <label for="farmer_name_input">Farmer Name <span style="color: #dc2626;">*</span></label>
+                    <input type="text" id="farmer_name_input" class="form-control" placeholder="Enter farmer name" autocomplete="off">
+                    <div id="farmer-suggestions" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 0.5rem 0.5rem; max-height: 200px; overflow-y: auto; z-index: 3000; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+                </div>
+                <div class="form-group">
+                    <label for="farmer_phone_input">Farmer Phone <span style="color: #dc2626;">*</span> <span style="font-weight: 400; font-size: 0.75rem; color: #6b7280;">(10 digits)</span></label>
+                    <input type="tel" id="farmer_phone_input" class="form-control" placeholder="Enter 10-digit phone number" maxlength="10" pattern="[0-9]{10}">
+                    <span id="phone-error" style="color: #dc2626; font-size: 0.75rem; display: none; margin-top: 0.25rem;"></span>
+                </div>
+                <div class="form-group">
+                    <label for="amount_paid_input">Amount Paid (Rs.) <span style="color: #dc2626;">*</span></label>
+                    <input type="number" id="amount_paid_input" class="form-control" placeholder="Enter amount paid" step="0.01" min="0" max="{{ pending_sale_total }}">
+                    <span id="amount-error" style="color: #dc2626; font-size: 0.75rem; display: none; margin-top: 0.25rem;"></span>
+                </div>
+            </div>
+        </div>
+
         <div style="display: flex; gap: 1rem; margin-top: 2rem; justify-content: flex-end;">
             <form method="POST">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="cancel_sale">
                 <button type="submit" class="btn btn-secondary">Cancel</button>
             </form>
-            <form method="POST">
+            <form method="POST" id="confirm-sale-form">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="confirm_sale">
-                <button type="submit" class="btn btn-primary" style="background-color: var(--success);">Confirm & Finalize Sale</button>
+                <input type="hidden" name="farmer_name" id="farmer_name_hidden">
+                <input type="hidden" name="farmer_phone" id="farmer_phone_hidden">
+                <input type="hidden" name="amount_paid" id="amount_paid_hidden">
+                <button type="submit" class="btn btn-primary" id="confirm-sale-btn" style="background-color: var(--success); opacity: 0.5; cursor: not-allowed;" disabled>Confirm & Finalize Sale</button>
             </form>
         </div>
     </div>
@@ -359,5 +399,149 @@
         await loadStockForShop();
     }
     initialize();
+
+    // ── Farmer Details & Confirm Button Logic ──
+    (function() {
+        const farmerNameInput = document.getElementById('farmer_name_input');
+        const farmerPhoneInput = document.getElementById('farmer_phone_input');
+        const amountPaidInput = document.getElementById('amount_paid_input');
+        const confirmBtn = document.getElementById('confirm-sale-btn');
+        const farmerNameHidden = document.getElementById('farmer_name_hidden');
+        const farmerPhoneHidden = document.getElementById('farmer_phone_hidden');
+        const amountPaidHidden = document.getElementById('amount_paid_hidden');
+        const suggestionsDiv = document.getElementById('farmer-suggestions');
+        const phoneError = document.getElementById('phone-error');
+        const amountError = document.getElementById('amount-error');
+        const billTotal = parseFloat('{{ pending_sale_total|default:"0" }}');
+
+        if (!farmerNameInput || !confirmBtn) return;
+
+        function syncHiddenFields() {
+            if (farmerNameHidden) farmerNameHidden.value = farmerNameInput.value.trim();
+            if (farmerPhoneHidden) farmerPhoneHidden.value = farmerPhoneInput.value.trim();
+            if (amountPaidHidden) amountPaidHidden.value = amountPaidInput.value.trim();
+        }
+
+        function checkFields() {
+            syncHiddenFields();
+            let valid = true;
+
+            // Validate farmer name
+            if (farmerNameInput.value.trim() === '') valid = false;
+
+            // Validate phone: must be exactly 10 digits and not all same digits
+            const phone = farmerPhoneInput.value.trim();
+            const phoneDigitsOnly = phone.replace(/[^0-9]/g, '');
+            if (phoneDigitsOnly.length === 0) {
+                phoneError.style.display = 'none';
+                valid = false;
+            } else if (phoneDigitsOnly.length !== 10) {
+                phoneError.textContent = `Phone must be exactly 10 digits (currently ${phoneDigitsOnly.length})`;
+                phoneError.style.display = 'block';
+                valid = false;
+            } else if (/^(\d)\1{9}$/.test(phoneDigitsOnly)) {
+                phoneError.textContent = 'Phone number cannot be all the same digits';
+                phoneError.style.display = 'block';
+                valid = false;
+            } else {
+                phoneError.style.display = 'none';
+            }
+
+            // Validate amount: can be 0, but not < 0 and not > bill total
+            const amountVal = parseFloat(amountPaidInput.value);
+            if (amountPaidInput.value.trim() === '' || isNaN(amountVal)) {
+                amountError.style.display = 'none';
+                valid = false;
+            } else if (amountVal < 0) {
+                amountError.textContent = 'Amount cannot be negative';
+                amountError.style.display = 'block';
+                valid = false;
+            } else if (amountVal > billTotal) {
+                amountError.textContent = `Amount cannot exceed bill total (Rs. ${billTotal.toFixed(2)})`;
+                amountError.style.display = 'block';
+                valid = false;
+            } else {
+                amountError.style.display = 'none';
+            }
+
+            if (valid) {
+                confirmBtn.disabled = false;
+                confirmBtn.style.opacity = '1';
+                confirmBtn.style.cursor = 'pointer';
+            } else {
+                confirmBtn.disabled = true;
+                confirmBtn.style.opacity = '0.5';
+                confirmBtn.style.cursor = 'not-allowed';
+            }
+        }
+
+        // Only allow digits in phone field
+        farmerPhoneInput.addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9]/g, '');
+            checkFields();
+        });
+
+        farmerNameInput.addEventListener('input', checkFields);
+        amountPaidInput.addEventListener('input', checkFields);
+
+        // ── Farmer Name Autocomplete ──
+        let searchTimeout = null;
+
+        farmerNameInput.addEventListener('input', function() {
+            const query = this.value.trim();
+            if (searchTimeout) clearTimeout(searchTimeout);
+            if (query.length < 1) {
+                suggestionsDiv.style.display = 'none';
+                suggestionsDiv.innerHTML = '';
+                return;
+            }
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const resp = await fetch(`/farmer-search/?q=${encodeURIComponent(query)}`);
+                    const data = await resp.json();
+                    const farmers = data.farmers || [];
+                    if (farmers.length === 0) {
+                        suggestionsDiv.style.display = 'none';
+                        suggestionsDiv.innerHTML = '';
+                        return;
+                    }
+
+                    // Auto-fill phone if exact name match found
+                    const exactMatch = farmers.find(f => f.name.toLowerCase() === query.toLowerCase());
+                    if (exactMatch) {
+                        farmerPhoneInput.value = exactMatch.phone;
+                        checkFields();
+                    }
+
+                    suggestionsDiv.innerHTML = '';
+                    farmers.forEach(f => {
+                        const item = document.createElement('div');
+                        item.style.cssText = 'padding: 0.6rem 1rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; transition: background 0.15s;';
+                        item.innerHTML = `<strong>${f.name}</strong> <span style="color: #6b7280; font-size: 0.85rem;">📞 ${f.phone}</span>`;
+                        item.addEventListener('mouseenter', () => { item.style.background = '#f0fdf4'; });
+                        item.addEventListener('mouseleave', () => { item.style.background = 'white'; });
+                        item.addEventListener('click', () => {
+                            farmerNameInput.value = f.name;
+                            farmerPhoneInput.value = f.phone;
+                            suggestionsDiv.style.display = 'none';
+                            suggestionsDiv.innerHTML = '';
+                            checkFields();
+                        });
+                        suggestionsDiv.appendChild(item);
+                    });
+                    suggestionsDiv.style.display = 'block';
+                } catch (e) {
+                    suggestionsDiv.style.display = 'none';
+                }
+            }, 250);
+        });
+
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!farmerNameInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+    })();
 </script>
 {% endblock %}

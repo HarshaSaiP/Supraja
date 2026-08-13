@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ShopLocation, ShopEmployee, Stock
+from .models import ShopLocation, ShopEmployee, Stock, Farmer
 
 @admin.register(ShopLocation)
 class ShopLocationAdmin(admin.ModelAdmin):
