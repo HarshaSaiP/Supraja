@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.conf import settings
+import uuid
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils import timezone
@@ -70,6 +71,9 @@ def login_view(request):
             return render(request, 'login/login.html', {'error': error})
     
     return render(request, 'login/login.html')
+
+def home_view(request):
+    return render(request, 'home.html')
 
 @login_required(login_url='login')
 def admin_dashboard(request):
@@ -332,6 +336,7 @@ def employee_dashboard(request):
                 farmer.save()
 
             total_final_price = Decimal('0.00')
+            bill_id = uuid.uuid4()
             try:
                 with transaction.atomic():
                     required_quantity_by_stock = {}
@@ -374,6 +379,7 @@ def employee_dashboard(request):
                         stock_item.save()
                         total_final_price += line_total
                         Sale.objects.create(
+                            bill_id=bill_id,
                             shop_location_id=pending_sale['shop_id'],
                             employee=request.user,
                             farmer=farmer,
@@ -976,6 +982,7 @@ def admin_get_sales_data(request):
     filtered_sales = [
         {
             'date': timezone.localtime(s.sale_date).strftime('%d-%m-%Y %I:%M %p'),
+            'bill_id': str(s.bill_id),
             'item_name': s.item_name,
             'employee': s.employee.username,
             'farmer_name': s.farmer_name or 'N/A',
@@ -1002,6 +1009,101 @@ def admin_get_sales_data(request):
         'total_amount': str(total_amount),
         'total_gst': str(total_gst)
     })
+
+
+def _build_bill_pdf_bytes(bill_sales):
+    first_sale = bill_sales[0]
+    styles = getSampleStyleSheet()
+    title_style = styles['Title']
+    title_style.fontName = 'Helvetica-Bold'
+    title_style.fontSize = 18
+    title_style.textColor = colors.HexColor('#166534')
+    title_style.alignment = 1
+
+    body_style = styles['BodyText']
+    body_style.fontName = 'Helvetica'
+    body_style.fontSize = 9
+    body_style.leading = 12
+
+    bill_date = timezone.localtime(first_sale.sale_date).strftime('%d-%m-%Y %I:%M %p')
+    customer_name = first_sale.farmer_name or 'Walk-in Customer'
+    customer_phone = first_sale.farmer_phone or '-'
+    bill_number = str(first_sale.bill_id).upper()
+
+    table_data = [[
+        Paragraph('<b>Item</b>', body_style),
+        Paragraph('<b>HSN</b>', body_style),
+        Paragraph('<b>Qty</b>', body_style),
+        Paragraph('<b>Rate</b>', body_style),
+        Paragraph('<b>Disc.</b>', body_style),
+        Paragraph('<b>GST</b>', body_style),
+        Paragraph('<b>Total</b>', body_style),
+    ]]
+    subtotal = Decimal('0.00')
+    total_gst = Decimal('0.00')
+    total_amount = Decimal('0.00')
+    for sale in bill_sales:
+        subtotal += sale.unit_price * sale.quantity
+        total_gst += sale.gst_amount
+        total_amount += sale.total_amount
+        table_data.append([
+            Paragraph(str(sale.item_name), body_style),
+            Paragraph(str(sale.hsn_code or '-'), body_style),
+            str(sale.quantity),
+            f'Rs. {sale.unit_price:.2f}',
+            f'{sale.discount_percent:.2f}%',
+            f'Rs. {sale.gst_amount:.2f}',
+            f'Rs. {sale.total_amount:.2f}',
+        ])
+
+    table = Table(table_data, colWidths=[110, 45, 35, 58, 48, 58, 65], repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#15803d')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#bbf7d0')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0fdf4')]),
+        ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+
+    amount_paid = first_sale.amount_paid
+    balance_due = max(total_amount - amount_paid, Decimal('0.00'))
+    story = [
+        Paragraph('SALES BILL', title_style),
+        Spacer(1, 10),
+        Paragraph(f'<b>Bill No:</b> {bill_number}<br/><b>Date:</b> {bill_date}<br/><b>Shop:</b> {first_sale.shop_location.name}<br/><b>Customer:</b> {customer_name} ({customer_phone})<br/><b>Employee:</b> {first_sale.employee.username}', body_style),
+        Spacer(1, 12),
+        table,
+        Spacer(1, 12),
+        Paragraph(f'<b>Subtotal:</b> Rs. {subtotal:.2f}<br/><b>Total GST:</b> Rs. {total_gst:.2f}<br/><b>Grand Total:</b> Rs. {total_amount:.2f}<br/><b>Amount Paid:</b> Rs. {amount_paid:.2f}<br/><b>Balance Due:</b> Rs. {balance_due:.2f}', body_style),
+        Spacer(1, 16),
+        Paragraph('Thank you for your purchase.', body_style),
+    ]
+
+    buffer = __import__('io').BytesIO()
+    document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20)
+    document.build(story)
+    return buffer.getvalue()
+
+
+@login_required(login_url='login')
+def admin_bill_pdf_view(request, bill_id):
+    if not request.user.is_superuser:
+        return HttpResponse('Unauthorized', status=403)
+
+    bill_sales = list(Sale.objects.filter(bill_id=bill_id).select_related('shop_location', 'employee').order_by('sale_date', 'id'))
+    if not bill_sales:
+        return HttpResponse('Bill not found', status=404)
+
+    pdf_data = _build_bill_pdf_bytes(bill_sales)
+    response = HttpResponse(pdf_data, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="bill_{bill_id}.pdf"'
+    return response
 
 @login_required(login_url='login')
 def delete_employee(request, user_id):

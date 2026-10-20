@@ -101,3 +101,26 @@ class FarmerDuePdfExportTests(TestCase):
         self.assertIn(b'Ravi Kumar', response.content)
         self.assertIn(b'9876543210', response.content)
         self.assertIn(b'131.25', response.content)
+
+
+class AdminBillPdfExportTests(TestCase):
+    def test_admin_can_download_itemized_bill(self):
+        admin = User.objects.create_superuser(username='billadmin', email='admin@example.com', password='secret123')
+        shop = ShopLocation.objects.create(name='Main Shop', address='Address 1')
+        bill_id = 'b6f4c3f1-7e18-45b4-83e7-4e3d8bb8a1c5'
+        Sale.objects.create(
+            bill_id=bill_id, shop_location=shop, employee=admin,
+            farmer_name='Ravi Kumar', farmer_phone='9876543210',
+            amount_paid=Decimal('50.00'), item_name='Rice Bag', quantity=1,
+            unit_price=Decimal('125.00'), discount_percent=Decimal('0.00'),
+            gst_percent=Decimal('5.00'), gst_amount=Decimal('6.25'),
+            total_amount=Decimal('131.25'),
+        )
+        self.client.force_login(admin)
+
+        response = self.client.get(reverse('admin_bill_pdf', args=[bill_id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('attachment', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF'))

@@ -105,17 +105,18 @@
                         <th>GST (%)</th>
                         <th>GST (Rs.)</th>
                         <th>Total Amount (Rs.)</th>
+                        <th>Bill</th>
                     </tr>
                 </thead>
                 <tbody id="sales_tbody">
                 </tbody>
                 <tfoot>
                     <tr class="total-row">
-                        <td colspan="8" style="text-align: right;">Total GST Amount:</td>
+                        <td colspan="9" style="text-align: right;">Total GST Amount:</td>
                         <td id="total_gst_display" style="color: var(--primary);">Rs. 0.00</td>
                     </tr>
                     <tr class="total-row">
-                        <td colspan="8" style="text-align: right;">Total Sales Amount (Incl. GST):</td>
+                        <td colspan="9" style="text-align: right;">Total Sales Amount (Incl. GST):</td>
                         <td id="total_amount_display">Rs. 0.00</td>
                     </tr>
                 </tfoot>
@@ -260,6 +261,7 @@
                             <td>${Number(sale.gst_percent).toFixed(0)}%</td>
                             <td>Rs. ${Number(sale.gst_amount).toFixed(2)}</td>
                             <td>Rs. ${Number(sale.total).toFixed(2)}</td>
+                            <td><a href="/admin-bill/${sale.bill_id}/" class="btn btn-primary" target="_blank" rel="noopener">Download</a></td>
                         </tr>
                     `;
                     salesTbody.innerHTML += row;

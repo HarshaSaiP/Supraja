@@ -16,12 +16,13 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from login.views import (login_view, admin_dashboard, create_admin_view, create_employee_view, 
+from login.views import (home_view, login_view, admin_dashboard, create_admin_view, create_employee_view,
                         employee_dashboard, logout_view, add_stock_view, check_stock_view,
                         create_shop_location_view, shop_locations_view, assign_employee_to_shop_view,
                         remove_employee_from_shop_view, employee_shop_stock_view, admin_sales_view,
                         admin_get_sales_data, delete_employee, delete_stock_view, delete_shop_location_view,
-                        farmer_search_view, admin_farmers_view, clear_farmer_due_view, farmer_due_pdf_view)
+                        farmer_search_view, admin_farmers_view, clear_farmer_due_view, farmer_due_pdf_view,
+                        admin_bill_pdf_view)
 from admin.views import gstr1_download_view, search_product_names
 from django.conf import settings
 from django.conf.urls.static import static
@@ -30,7 +31,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('login/', login_view, name='login'),
     path('logout/', logout_view, name='logout'),
-    path('', login_view, name='home'),
+    path('', home_view, name='home'),
     path('admin-dashboard/', admin_dashboard, name='admin_dashboard'),
     path('create-admin/', create_admin_view, name='create_admin'),
     path('create-employee/', create_employee_view, name='create_employee'),
@@ -44,6 +45,7 @@ urlpatterns = [
     path('employee-shop-stock/', employee_shop_stock_view, name='employee_shop_stock'),
     path('admin-sales/', admin_sales_view, name='admin_sales'),
     path('admin-get-sales-data/', admin_get_sales_data, name='admin_get_sales_data'),
+    path('admin-bill/<uuid:bill_id>/', admin_bill_pdf_view, name='admin_bill_pdf'),
     path('delete-employee/<int:user_id>/', delete_employee, name='delete_employee'),
     path('delete-stock/<int:stock_id>/', delete_stock_view, name='delete_stock'),
     path('delete-shop-location/<int:shop_id>/', delete_shop_location_view, name='delete_shop_location'),
