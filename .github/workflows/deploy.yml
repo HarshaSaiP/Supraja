@@ -6,6 +6,13 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: supraja-deployment
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,12 +21,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check Django configuration
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
         run: |
-          python -m pip install Django
-          python manage.py check
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          else
+            python -m pip install Django openpyxl requests
+          fi
+
+      - name: Check Django configuration
         env:
           DJANGO_SETTINGS_MODULE: Supraja.settings
+        run: python manage.py check
 
       - name: Deploy to PythonAnywhere
         env:
@@ -35,8 +54,21 @@ jobs:
           token = os.environ["PA_API_TOKEN"]
           domain = os.environ["PA_DOMAIN"]
 
-          base = f"https://www.pythonanywhere.com/api/v0/user/{username}"
-          headers = {"Authorization": f"Token {token}"}
+          base = (
+              "https://www.pythonanywhere.com/api/v0/user/"
+              + username
+          )
+          headers = {
+              "Authorization": f"Token {token}"
+          }
+
+          # Verify that the PythonAnywhere web app exists.
+          response = requests.get(
+              f"{base}/webapps/{domain}/",
+              headers=headers,
+              timeout=30,
+          )
+          response.raise_for_status()
 
           # Find the existing Bash console.
           response = requests.get(
@@ -48,37 +80,44 @@ jobs:
 
           consoles = response.json()
           console = next(
-              (c for c in consoles if str(c.get("id")) == "48744124"),
+              (
+                  item for item in consoles
+                  if str(item.get("id")) == "48744124"
+              ),
               None,
           )
 
           if console is None:
               raise RuntimeError(
-                  "The expected console was not found. "
-                  "Check the console ID in your PythonAnywhere account."
+                  "PythonAnywhere Bash console 48744124 "
+                  "was not found."
               )
 
-          # Pull code into the existing deployment directory.
+          # Submit the Git pull command.
           response = requests.post(
               f"{base}/consoles/{console['id']}/send_input/",
               headers=headers,
               data={
                   "input": (
                       "cd /home/Supraja/Supraja && "
-                      "git pull origin master\n"
+                      "git pull --ff-only origin master\n"
                   )
               },
               timeout=30,
           )
           response.raise_for_status()
 
-          # Reload the deployed Django web application.
-          response = requests.post(
-              f"{base}/webapps/{domain}/reload/",
-              headers=headers,
-              timeout=30,
+          print(
+              "Git pull command submitted. "
+              "Check the PythonAnywhere console to verify "
+              "that it completed successfully."
           )
-          response.raise_for_status()
 
-          print("PythonAnywhere deployment triggered successfully.")
+          # Do not reload yet: submitting console input does
+          # not prove that git pull has finished.
+          print(
+              "Code update submitted, but automatic reload "
+              "has not been performed. Deployment needs a "
+              "reliable completion check before reloading."
+          )
           PY
