@@ -1,0 +1,84 @@
+name: Deploy Supraja to PythonAnywhere
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check Django configuration
+        run: |
+          python -m pip install Django
+          python manage.py check
+        env:
+          DJANGO_SETTINGS_MODULE: Supraja.settings
+
+      - name: Deploy to PythonAnywhere
+        env:
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}
+          PA_DOMAIN: ${{ secrets.PA_DOMAIN }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          username = os.environ["PA_USERNAME"]
+          token = os.environ["PA_API_TOKEN"]
+          domain = os.environ["PA_DOMAIN"]
+
+          base = f"https://www.pythonanywhere.com/api/v0/user/{username}"
+          headers = {"Authorization": f"Token {token}"}
+
+          # Find the existing Bash console.
+          response = requests.get(
+              f"{base}/consoles/",
+              headers=headers,
+              timeout=30,
+          )
+          response.raise_for_status()
+
+          consoles = response.json()
+          console = next(
+              (c for c in consoles if str(c.get("id")) == "48744124"),
+              None,
+          )
+
+          if console is None:
+              raise RuntimeError(
+                  "The expected console was not found. "
+                  "Check the console ID in your PythonAnywhere account."
+              )
+
+          # Pull code into the existing deployment directory.
+          response = requests.post(
+              f"{base}/consoles/{console['id']}/send_input/",
+              headers=headers,
+              data={
+                  "input": (
+                      "cd /home/Supraja/Supraja && "
+                      "git pull origin master\n"
+                  )
+              },
+              timeout=30,
+          )
+          response.raise_for_status()
+
+          # Reload the deployed Django web application.
+          response = requests.post(
+              f"{base}/webapps/{domain}/reload/",
+              headers=headers,
+              timeout=30,
+          )
+          response.raise_for_status()
+
+          print("PythonAnywhere deployment triggered successfully.")
+          PY
